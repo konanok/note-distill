@@ -1,0 +1,8 @@
+{
+  "name": "note-distill",
+  "description": "在后台 fork subagent 把当前对话中的技术方案提炼为结构化笔记，写入配置的知识库，支持 quick / deep 双模式，主 session 不被打断。",
+  "version": "0.0.1",
+  "author": {
+    "name": "konanok"
+  }
+}

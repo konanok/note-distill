@@ -1,0 +1,26 @@
+{
+  "_comment": "note-distill 配置文件。复制到 ~/.config/note-distill/config.json 并填写实际值。",
+
+  "adapter": "obsidian",
+
+  "_comment_obsidian": "以下字段仅 adapter=obsidian 时使用",
+  "obsidian_vault_path": "",
+  "notes_subfolder": "Tech",
+  "subfolder_by_mode": {
+    "quick": "quick",
+    "deep": "deep"
+  },
+
+  "_comment_common": "以下字段所有 adapter 通用",
+  "filename_template": "{date}-{slug}",
+  "date_format": "YYYY-MM-DD",
+  "frontmatter_defaults": {
+    "tags": ["auto-note"],
+    "source": "note-distill"
+  },
+  "auto_mode_heuristic": {
+    "deep_if_tokens_gt": 2000,
+    "deep_if_files_referenced_gt": 2,
+    "deep_if_multiple_alternatives_discussed": true
+  }
+}
