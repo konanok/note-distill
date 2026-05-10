@@ -21,29 +21,34 @@ note-distill 的做法：一条 `/note` 指令派发任务到**后台 fork subag
 
 ## Quick Start
 
-### 1. 安装插件
+### 1. 安装
 
-在 Claude Code 中执行：
+```bash
+# 从 GitHub 安装
+/plugin install github.com/konanok/note-distill
 
-```
-/plugin install <repo-url>
+# 或从本地路径安装（开发用）
+/plugin install ~/Projects/Github/note-distill
 ```
 
 ### 2. 写配置
 
 ```bash
 mkdir -p ~/.config/note-distill
-cp "$PWD/skills/note-distill/config.example.json" ~/.config/note-distill/config.json
-# 编辑 config.json，设置 adapter 及对应目标（如 obsidian_vault_path）
+cp ~/Projects/Github/note-distill/skills/note-distill/config.example.json \
+   ~/.config/note-distill/config.json
+# 编辑 config.json，至少填写 obsidian_vault_path
 ```
 
 ### 3. 使用
 
 ```
-/note                     # 自动判断深/浅
-/note quick               # 短笔记（也可用 fast / q / f）
-/note deep                # 深度笔记（也可用 d）
-/note deep NUMA 调度问题   # 可带 topic 提示
+/note                              # 自动判断深/浅
+/note quick                        # 短笔记（别名：fast / q / f）
+/note deep                         # 深度笔记（别名：d）
+/note deep NUMA 调度问题            # 可带 topic 提示
+/note --style til                  # 指定笔记风格
+/note deep --style evergreen       # 组合使用
 ```
 
 ## 笔记模式
@@ -70,7 +75,24 @@ cp "$PWD/skills/note-distill/config.example.json" ~/.config/note-distill/config.
 - 关联条目（wikilinks）
 - 修订历史
 
-## 设计原则
+## 笔记风格
+
+| 风格 | 适合场景 | 标题格式 | 强制模式 |
+|---|---|---|---|
+| `technical`（默认） | 技术方案沉淀 | 动词/名词短语 | 无 |
+| `til` | 碎片速记，知识种子 | `TIL: {动词短语}` | quick |
+| `evergreen` | 观点积累，知识网络 | 完整命题句 | deep |
+
+```
+/note --style til                  # 今日所学
+/note deep --style evergreen       # 沉淀一个观点
+```
+
+## 所需工具权限
+
+fork subagent 继承主 session 的工具权限，需要：`Read`、`Write`、`Bash`、`SendMessage`（必需），`WebFetch`、`WebSearch`（按需验证时使用）。Claude Code 默认已开放，通常无需额外配置。
+
+
 
 1. **主 session 零开销**：主 agent 只 spawn subagent，不做任何内容提炼
 2. **完整上下文**：`subagent_type="fork"` + `run_in_background=true`
@@ -87,6 +109,7 @@ cp "$PWD/skills/note-distill/config.example.json" ~/.config/note-distill/config.
 ├── skills/note-distill/    # 核心 skill 逻辑
 │   ├── SKILL.md            # 主 agent 端流程 + spawn prompt 模板
 │   ├── config.example.json # 配置模板
+│   ├── styles/             # 笔记风格（technical / til / evergreen）
 │   ├── references/         # 行为规范 + 笔记模板
 │   └── adapters/           # 写入目标适配器（obsidian、未来: notion、feishu）
 ├── commands/note.md        # Claude Code slash command 转发器
@@ -100,11 +123,13 @@ cp "$PWD/skills/note-distill/config.example.json" ~/.config/note-distill/config.
 ## 路线图
 
 - [x] Obsidian adapter
+- [x] 三种笔记风格（technical / til / evergreen）
+- [x] TIL 种子笔记机制（`status: seed`）
 - [ ] Notion adapter
 - [ ] 飞书文档 adapter
 - [ ] `/note-search` 检索已有笔记
-- [ ] `/note-moc` 生成 Map-of-Content 索引
-- [ ] 已有 quick 笔记升级为 deep 的流程
+- [ ] `/note-moc` 汇总 seed 笔记，生成 Map-of-Content 索引
+- [ ] 已有 quick/til 笔记升级为 deep 的流程
 
 ## License
 

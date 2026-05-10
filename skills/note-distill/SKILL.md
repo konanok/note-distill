@@ -1,7 +1,6 @@
 ---
 name: note-distill
-description: 用 fork subagent 在后台把当前对话中的技术方案写成笔记，支持 quick/deep 两种模式，写入目标由 adapter 配置决定（v0.0.1 仅支持 obsidian）。Use when the user types /note, /note quick, /note fast, /note deep, /note q, /note f, /note d, or asks to "记笔记"、"把这个方案记下来"、"归档到 obsidian".
-version: 0.0.1
+description: 用 fork subagent 在后台把当前对话中的技术方案写成笔记，支持 quick/deep 两种模式和 technical/til/evergreen 三种风格，写入目标由 adapter 配置决定（v0.0.1 仅支持 obsidian）。Use when the user types /note, /note quick, /note fast, /note deep, /note q, /note f, /note d, or asks to "记笔记"、"把这个方案记下来"、"归档到 obsidian".
 ---
 
 # Note Distill —— 后台笔记提炼器
@@ -13,6 +12,7 @@ version: 0.0.1
 - `/note` 或 `/note <topic>` —— 自动判断模式
 - `/note quick` / `/note q` / `/note fast` / `/note f` —— 快速记录模式（`fast` 是 `quick` 的别名）
 - `/note deep` / `/note d` —— 深度探索模式
+- `/note --style <til|technical|evergreen>` —— 指定笔记风格
 - 自然语言："把这个方案记到 obsidian"、"记笔记"、"归档这个讨论"
 
 ## 核心原则
@@ -40,7 +40,7 @@ version: 0.0.1
 
 - 配置正常 → 继续 Step 2。
 
-### Step 2：确定模式
+### Step 2：确定模式与风格
 
 根据用户输入确定模式：
 
@@ -50,13 +50,26 @@ version: 0.0.1
 | `/note deep`、`/note d` | `deep` |
 | `/note`、`/note <topic>`（无 quick/fast/deep 关键词） | `auto`（subagent 自己判断） |
 
-提取可选 topic 提示（命令后跟着的自由文本）。
+提取可选 topic 提示（命令后跟着的自由文本，去掉 `--style` 参数部分）。
 
 **归一化规则**：spawn subagent 时传的 `MODE` 值必须是 `quick` / `deep` / `auto` 三者之一。`fast` 和 `f` 在主 agent 端就要归一化成 `quick`，不要把 `fast` 传给 subagent——保持内部语义统一。
 
+**确定风格（STYLE）**：
+
+按以下优先级确定风格：
+
+1. **用户命令行参数**：`--style <name>` 直接指定 → 使用该值
+2. **config 的 style_overrides**：若 config.json 有 `style_overrides.<mode>` 字段 → 使用该值（mode 为归一化后的 quick/deep，auto 模式跳过此级）
+3. **config 的 default_style**：若 config.json 有 `default_style` 字段 → 使用该值
+4. **兜底默认值**：`technical`
+
+合法 STYLE 值：`technical` / `til` / `evergreen`。其他值视为无效，降级为 `technical` 并在主 session 提示用户。
+
+**风格强制模式检查**：某些风格强制使用特定 mode（`til` → `quick`，`evergreen` → `deep`）。若用户同时指定了 `--style` 和冲突的 mode（如 `/note deep --style til`），主 agent 必须在 Step 4 汇报中告知用户"style X 已强制转为 Y 模式"，并将 MODE 替换为 style 强制的值后再传给 subagent。
+
 ### Step 3：Spawn fork subagent（后台）
 
-调用 Task 工具，**必须满足**：
+调用 Agent 工具，**必须满足**：
 
 - `subagent_type="fork"` —— 继承完整对话历史
 - `run_in_background=true` —— 后台跑，主 session 不阻塞
@@ -72,24 +85,27 @@ version: 0.0.1
 
 你的任务：把本次会话中值得记录的技术方案或问题解法，写成一篇笔记并写入配置的知识库。
 
-# 模式
+# 模式与风格
 MODE = {quick|deep|auto}
+STYLE = {technical|til|evergreen}
 TOPIC_HINT = "{用户给的 topic 提示，可为空}"
 SKILL_DIR = "{主 agent 传入的 SKILL.md 所在绝对目录}"
 
 # 必读文件（按顺序读）
 1. ~/.config/note-distill/config.json —— 配置（用户级，不在 SKILL_DIR 内）
 2. {SKILL_DIR}/references/note-writer-protocol.md —— 行为规范
-3. 根据 MODE 读对应模板：
+3. {SKILL_DIR}/styles/{STYLE}.md —— 风格规范（覆盖模板默认行为）
+4. 根据 MODE（若 STYLE 强制了模式，以 STYLE 为准）读对应模板：
    - quick → {SKILL_DIR}/references/quick-template.md
    - deep  → {SKILL_DIR}/references/depth-template.md
    - auto  → 都读，自己判断后选一个
-4. 根据 config.json 的 adapter 字段读对应写入规范：
+5. 根据 config.json 的 adapter 字段读对应写入规范：
    - obsidian → {SKILL_DIR}/adapters/obsidian.md
 
 # 核心约束
 - 你拥有完整对话历史，必须亲自从历史中识别"值得记录"的内容，不要依赖摘要。
 - 严禁直接转述对话。按模板结构重新组织，产出有深度的笔记（deep 模式下尤其）。
+- 风格文件中的规则优先于模板默认结构，风格文件若强制了模式（如 til 强制 quick），必须遵守。
 - 按 note-writer-protocol.md 的验证规范自主选择验证手段。
 - 按对应 adapter 的规范写入文件，完成后通过 SendMessage（recipient="main"）把笔记绝对路径发回主 session。
 
@@ -101,7 +117,7 @@ SKILL_DIR = "{主 agent 传入的 SKILL.md 所在绝对目录}"
 
 spawn 成功后在主 session 回复一句（保持简短）：
 
-> 📝 笔记任务已派发到后台（模式: {mode}）。完成后会通知你。
+> 📝 笔记任务已派发到后台（模式: {mode}，风格: {style}）。完成后会通知你。
 
 然后立即回到用户原任务。
 

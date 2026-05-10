@@ -11,6 +11,14 @@
     "deep": "deep"
   },
 
+  "_comment_style": "笔记风格配置。合法值：technical（默认）、til、evergreen",
+  "default_style": "technical",
+  "style_overrides": {
+    "_comment": "按模式覆盖风格。quick 模式默认 til 是常见配置；不设置则继承 default_style",
+    "quick": "til",
+    "deep": "technical"
+  },
+
   "_comment_common": "以下字段所有 adapter 通用",
   "filename_template": "{date}-{slug}",
   "date_format": "YYYY-MM-DD",
