@@ -10,19 +10,16 @@
 *.swo
 *~
 
-# claude local settings
-.claude/settings.local.json
-
 # Local dev / temp
 *.log
 tmp/
 scratch/
 
+# claude local settings
+.claude/
+
 # 用户真实配置绝不入库（仅 config.example.json 入库）
-**/note-distill/config.json
+.config
 
 # 设计文档含本地路径，暂不入库
 docs/
-
-# Claude Code 本地权限配置（含本机路径）
-.claude/

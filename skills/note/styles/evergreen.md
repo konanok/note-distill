@@ -84,7 +84,7 @@ status: growing              # seed → growing → evergreen，初始为 growin
 
 ## 文件存放
 
-覆盖 adapter 的默认路径，存入 `{vault}/Evergreen/` 目录（可通过 config 中 `style_overrides.evergreen.subfolder` 修改）。
+覆盖 adapter 的默认路径，存入 `{vault}/Evergreen/` 目录。
 
 ## wikilinks
 

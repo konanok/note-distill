@@ -1,0 +1,28 @@
+{
+  "_comment": "note-distill 配置模板。由 /note-config 自动生成，也可手动编辑。",
+
+  "adapter": "local-markdown",
+
+  "_comment_path": "根据 adapter 填写对应的路径字段，不要同时出现 output_dir 和 obsidian_vault_path",
+  "output_dir": "",
+  "_obsidian_example": "如用 obsidian，替换上面 output_dir 为 obsidian_vault_path",
+
+  "subfolder_by_mode": {
+    "quick": "quick",
+    "deep": "deep"
+  },
+
+  "default_style": "technical",
+  "_style_options": "technical / til / evergreen",
+  "style_overrides": {
+    "_comment": "按模式覆盖风格，不设置则继承 default_style",
+    "quick": "til",
+    "deep": "technical"
+  },
+
+  "auto_mode_heuristic": {
+    "deep_if_tokens_gt": 2000,
+    "deep_if_files_referenced_gt": 2,
+    "deep_if_multiple_alternatives_discussed": true
+  }
+}
