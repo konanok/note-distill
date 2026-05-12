@@ -63,8 +63,6 @@
 - **标题格式**：风格文件规定的标题格式优先于模板默认。
 - **frontmatter 额外字段**：风格文件要求的额外 frontmatter 字段必须包含（如 `status: seed`、`upgrade_to`）。
 
-> **注意**：文件存放路径**不要再从风格文件中读取**。`OUTPUT_SUBDIR` 已由主 agent 在 spawn prompt 中提供，直接使用。
-
 ## 4. 按模板组织
 
 - `quick` → 读 `{SKILL_DIR}/references/quick-template.md`，再按风格文件的覆盖规则调整

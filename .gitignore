@@ -13,6 +13,7 @@
 # Local dev / temp
 *.log
 tmp/
+.tmp/
 scratch/
 
 # claude local settings

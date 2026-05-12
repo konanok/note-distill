@@ -7,6 +7,9 @@
   "output_dir": "",
   "_obsidian_example": "如用 obsidian，替换上面 output_dir 为 obsidian_vault_path",
 
+  "templates_dir": "~/.config/note-distill/templates",
+  "_templates_dir_comment": "用户自定义模板目录，可省略（默认值如上）",
+
   "subfolder_by_mode": {
     "quick": "quick",
     "deep": "deep"

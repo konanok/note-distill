@@ -38,7 +38,13 @@ Install via Claude Code's built-in plugin manager. Claude Code auto-discovers `s
 /plugin install ~/Projects/Github/note-distill
 ```
 
-Changes to project files take effect immediately — no restart needed (except for SKILL.md frontmatter `name`/`description` field changes).
+For local development, use `--plugin-dir` to test without installing:
+
+```bash
+claude --plugin-dir ~/Projects/Github/note-distill
+```
+
+Then `/reload-plugins` to pick up changes without restarting. Changes to project files take effect immediately except for SKILL.md frontmatter `name`/`description` field changes, which require a restart.
 
 ## Key conventions
 
@@ -63,7 +69,7 @@ Changes to project files take effect immediately — no restart needed (except f
 | Note templates (quick/deep) | `skills/note/references/{quick,depth}-template.md` |
 | Note style (writing philosophy) | `skills/note/styles/<style>.md` |
 | Note template (frontmatter + layout) | `skills/note/templates/<style>.md` |
-| Obsidian write conventions | `skills/note/adapters/obsidian.md` |
+| Obsidian write conventions (two-tier: Skill → Write fallback) | `skills/note/adapters/obsidian.md` |
 | Local markdown write conventions | `skills/note/adapters/local-markdown.md` |
 | Add a new output target (Notion/Feishu) | New `skills/note/adapters/<name>.md` |
 | Init / check commands | `skills/note-config/SKILL.md` / `skills/note-check/SKILL.md` |
@@ -90,7 +96,7 @@ Manual verification:
 3. `/note` (no args) → auto mode
 4. `/note --style til` → TIL-format note in `{vault}/TIL/`, frontmatter has `status: seed`
 5. `/note deep --style evergreen` → evergreen note with proposition-sentence title, 5+ wikilinks
-6. Frontmatter includes `ai-generated: true`, `TODO` tag, `source: note-distill:<platform>:<session-id>`
+6. Frontmatter includes `ai-generated: true`, `TODO` + `need-human-review` tags, `source: note-distill:<platform>:<session-id>`
 7. Subagent reports path on completion via SendMessage
 
 ## Release
