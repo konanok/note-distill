@@ -79,6 +79,18 @@ OUTPUT_SUBDIR = "{主 agent 解析好的输出子目录，如 TIL、Evergreen、
 PLATFORM = "{claude-code|unknown}"
 SESSION_ID = "{当前 session ID，如无法获取则 `unknown`}"
 
+# 增量范围
+本次 `/note` 命令只是触发点，不属于要记录的内容。
+
+在识别要记录的内容前，先确定本次处理范围：
+1. 在当前这次 `/note` 之前，找到最近一次用户执行的 `/note ...` 命令；边界消息必须是用户消息，且消息文本以 `/note` 开头。
+2. 不要把上一条 `/note` 之后的普通用户问题、助手回复或后台回报当作 note 边界。
+3. 如果找到了上一条 `/note`，本次只处理“上一条 `/note` 之后、本次 `/note` 之前”的新对话内容。
+4. 上一条 `/note` 之前的内容只能作为背景，不得作为主要笔记素材。
+5. 如果找不到上一条 `/note`，则处理当前会话中本次 `/note` 之前的全部技术内容。
+6. note 边界以用户执行 `/note` 命令的时刻为准，不以后台笔记写入完成时刻为准。
+7. 如果处理范围内没有值得记录的新技术内容，按“空内容”回报并结束。
+
 # 必读文件（按顺序读）
 1. ~/.config/note-distill/config.json —— 配置（用户级）
 2. {SKILL_DIR}/references/note-writer-protocol.md —— 行为规范
