@@ -22,5 +22,8 @@ scratch/
 # 用户真实配置绝不入库（仅 config.example.json 入库）
 .config
 
+# 项目级配置覆盖（仅覆盖项）
+.note-distill.json
+
 # 设计文档含本地路径，暂不入库
 docs/

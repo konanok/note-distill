@@ -32,7 +32,7 @@ note-distill 的 `/note` 是后台 fork subagent 任务，必须能在 server / 
 
 ## 模板解析
 
-和 local-markdown adapter 共用同一套模板系统。详见 `local-markdown.md` 的"模板解析"章节。渲染后得到**完整笔记内容字符串**（含 frontmatter + 正文），供后续写入步骤使用。
+和 local-markdown adapter 共用同一套模板系统。详见 `local-markdown.md` 的"模板解析"章节。模板文件是完整的笔记骨架（frontmatter + section 标题 + `{{variable}}` 占位），subagent 直接填充变量。渲染后得到**完整笔记内容字符串**（含 frontmatter + 正文），供后续写入步骤使用。
 
 ## 工具探测与降级
 

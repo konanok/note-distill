@@ -35,7 +35,7 @@ note-distill 的做法：一条 `/note` 指令派发任务到**后台 fork subag
 
 ```bash
 mkdir -p ~/.config/note-distill
-cp ~/Projects/Github/note-distill/skills/note-distill/config.example.json \
+cp ~/Projects/Github/note-distill/skills/note/config.example.json \
    ~/.config/note-distill/config.json
 # 编辑 config.json，至少填写 obsidian_vault_path
 ```
@@ -106,14 +106,17 @@ fork subagent 继承主 session 的工具权限，需要：`Read`、`Write`、`B
 .
 ├── .claude-plugin/         # Claude Code plugin 元信息
 │   └── plugin.json
-├── skills/note-distill/    # 核心 skill 逻辑
-│   ├── SKILL.md            # 主 agent 端流程 + spawn prompt 模板
-│   ├── config.example.json # 配置模板
-│   ├── styles/             # 笔记风格（technical / til / evergreen）
-│   ├── references/         # 行为规范 + 笔记模板
-│   └── adapters/           # 写入目标适配器（obsidian、未来: notion、feishu）
-├── commands/note.md        # Claude Code slash command 转发器
-├── docs/                   # 设计文档（本地，不入库）
+├── skills/
+│   ├── note/               # 核心 skill 逻辑
+│   │   ├── SKILL.md        # 主 agent 端流程 + spawn prompt 模板
+│   │   ├── config.example.json # 配置模板
+│   │   ├── styles/         # 笔记风格（technical / til / evergreen）
+│   │   ├── references/     # 行为规范 + 笔记模板
+│   │   ├── templates/      # markdown 模板（frontmatter + layout）
+│   │   └── adapters/       # 写入目标适配器（obsidian, local-markdown）
+│   ├── note-config/        # /note-config 命令
+│   └── note-check/         # /note-check 命令
+├── hooks/                  # Hook 系统（事件采集 + 候选分析）
 ├── CLAUDE.md
 ├── README.md
 ├── CHANGELOG.md

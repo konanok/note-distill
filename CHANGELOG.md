@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Hook-based note candidate pipeline：`UserPromptSubmit` / `Stop` hooks 自动采集会话事件，异步分析生成候选知识点，`/note` 优先消费 candidates/event window，无需完整对话历史
+- 三种候选分析器：`claude`（LLM 分析）、`heuristic`（关键词匹配）、`fake`（测试用），支持 fallback 降级
+- 候选选择策略：`auto`（按 oldest/newest/priority 自动选）、`pick`（交互式选择）、`all`（实验性全选）
+- `/note --auto` / `--pick` / `--all` 命令行参数，可通过 config `candidate_selection` 段配置默认行为
+- 并发分析锁机制：防止多次 Stop 快速触发导致 candidates 文件竞态覆盖
+- 重分析保护：非确定性分析器重跑时保留已有 pending candidates，避免丢失
+- 事件窗口提取：自动识别最近两次 `/note` 间的事件范围，确保增量笔记边界正确
+- 项目级配置覆盖：`./.note-distill.json` 深度合并全局配置，按项目定制 adapter、输出路径等
+- `merge-config` CLI 命令：输出合并后配置，消除 subagent 手动合并的双源风险
+- TIL 模板 `{{upgrade_to}}` 变量：subagent 可判断知识点升级方向
+- `local-markdown` adapter 作为 Obsidian 之外的官方支持 adapter
+
 ### Planned
 - Notion adapter
 - 飞书文档 adapter

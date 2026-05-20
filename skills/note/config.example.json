@@ -27,5 +27,17 @@
     "deep_if_tokens_gt": 2000,
     "deep_if_files_referenced_gt": 2,
     "deep_if_multiple_alternatives_discussed": true
+  },
+
+  "candidate_selection": {
+    "default_behavior": "auto",
+    "auto_pick_strategy": "oldest",
+    "max_pick_options": 5
+  },
+
+  "candidate_analyzer": {
+    "provider": "claude",
+    "model": "claude-haiku-4-5-20251001",
+    "fallback": "heuristic"
   }
 }

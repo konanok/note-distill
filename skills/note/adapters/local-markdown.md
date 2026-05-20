@@ -14,35 +14,50 @@
 
 ### 模板优先级
 
-对于当前 STYLE，按以下顺序查找模板，找到第一个存在的即使用：
+模板文件是完整的笔记骨架（frontmatter + section 标题 + `{{variable}}` 占位），subagent 直接填充变量。按以下顺序查找，第一个存在的即使用：
 
-1. `<templates_dir>/<style>.md` — 用户风格的模板
-2. `<templates_dir>/default.md` — 用户默认模板
-3. `{SKILL_DIR}/templates/<style>.md` — 内置风格模板
-4. `{SKILL_DIR}/templates/default.md` — 内置默认模板
+1. `<templates_dir>/<style>-<mode>.md` — 用户风格+模式模板
+2. `<templates_dir>/<style>.md` — 用户风格模板
+3. `{SKILL_DIR}/templates/<style>-<mode>.md` — 内置风格+模式模板
+4. `{SKILL_DIR}/templates/<style>.md` — 内置风格模板
 
 ### 模板变量
 
-模板是标准 markdown 文件，使用 `{{variable}}` 占位符。渲染时必须全部替换，不得保留未替换的占位符。
+模板使用 `{{variable}}` 占位符。渲染时必须全部替换，不得保留未替换的占位符。
 
-| 变量 | 类型 | 格式 / 获取方式 |
+| 变量 | 类型 | 说明 |
 |---|---|---|
 | `{{date}}` | 自动 | `YYYY-MM-DD`，执行 `date +%Y-%m-%d` |
-| `{{mode}}` | 自动 | `quick` / `deep` / `auto` |
+| `{{mode}}` | 自动 | `quick` / `deep` |
 | `{{style}}` | 自动 | `technical` / `til` / `evergreen` |
-| `{{title}}` | AI 生成 | 笔记标题 |
-| `{{content}}` | AI 生成 | 笔记正文（按 style 规范写作） |
-| `{{domain_tags}}` | AI 生成 | 领域标签，逗号分隔（如 `git, cli`），不超过 4 个 |
-| `{{slug}}` | AI 生成 | 文件名 slug，英文、小写、连字符分隔，最多 50 字符 |
+| `{{title}}` | AI | 笔记标题 |
+| `{{domain_tags}}` | AI | 领域标签，逗号分隔（如 `git, cli`），不超过 4 个 |
+| `{{slug}}` | AI | 文件名 slug，英文、小写、连字符分隔，最多 50 字符 |
 | `{{session_id}}` | 自动 | session ID，由主 agent 传入 |
 | `{{platform}}` | 自动 | 平台标识（`claude-code` 等），由主 agent 传入 |
+| `{{upgrade_to}}` | AI | 仅 TIL 风格，判断升级方向（`technical` / `evergreen` / `null`） |
+| `{{tldr}}` | AI | deep: TL;DR 内容 |
+| `{{background}}` | AI | deep: 背景与问题 |
+| `{{principles}}` | AI | deep: 核心原理 |
+| `{{solution}}` | AI | 解决方案/方案内容 |
+| `{{alternatives}}` | AI | deep: 备选方案与取舍 |
+| `{{boundaries}}` | AI | deep: 边界与陷阱 |
+| `{{verification}}` | AI | deep: 验证证据 |
+| `{{related}}` | AI | 关联条目 |
+| `{{scenario}}` | AI | quick: 场景描述 |
+| `{{notes}}` | AI | quick: 备注（可为空） |
+| `{{core_argument}}` | AI | evergreen: 核心观点 |
+| `{{evidence}}` | AI | evergreen: 论据与支撑 |
+| `{{counterarguments}}` | AI | evergreen: 边界与反例 |
+| `{{deep_dive}}` | AI | til: 值得深入？（可为空） |
 
 ### 渲染与写入
 
 1. 按优先级找到模板文件，Read 读取
 2. 逐一替换 `{{variable}}` 为实际值
 3. 渲染完成后检查：**不得保留任何未替换的 `{{...}}`**，否则报错中止
-4. Write 工具写入最终内容
+4. 运行 validate-note.ts 校验
+5. Write 工具写入最终内容
 
 ## 文件落点
 
