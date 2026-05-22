@@ -2,16 +2,20 @@
   "_comment": "note-distill 配置模板。由 /note-config 自动生成，也可手动编辑。",
 
   "adapter": "local-markdown",
+  "_adapter_comment": "写入目标：local-markdown（本地文件）或 obsidian（Obsidian vault）",
 
   "_comment_path": "根据 adapter 填写对应的路径字段",
   "output_dir": "",
   "_obsidian_example": "如用 obsidian，替换上面 output_dir 为 obsidian_vault_path",
 
-  "templates_dir": "~/.config/note-distill/templates",
-  "_templates_dir_comment": "用户自定义模板目录，可省略（默认值如上）",
+  "link_style": "markdown",
+  "_link_style_comment": "链接风格：markdown（[text](url)）或 wikilink（[[概念名]]）。obsidian 用户建议 wikilink",
 
-  "default_template": "til",
-  "_default_template_comment": "不指定模板时的默认模板名，出厂默认 til。可选: til, design, technical，或用户自定义的任何模板名",
+  "default_topic": "til",
+  "_default_topic_comment": "不指定 topic 时的默认值，出厂默认 til。可选: til, adr，或用户自定义的任何 topic",
+
+  "topics_dir": "~/.config/note-distill/topics",
+  "_topics_dir_comment": "用户自定义 topic 目录，可省略（默认值如上）",
 
   "candidate_selection": {
     "default_behavior": "auto",

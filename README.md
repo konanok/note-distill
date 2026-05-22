@@ -1,138 +1,105 @@
 # note-distill
 
-> 在后台 fork 一个 subagent，把当前 AI 对话中值得记录的技术方案提炼成结构化笔记，写入你选择的知识库——**主 session 不被打断**。
+> 后台 fork subagent，把当前会话中值得记录的内容按 topic 整理为结构化笔记，写入知识库——**主 session 不被打断**。
 
-## 为什么需要这个
+## 为什么需要
 
-AI 给出完美方案后，想归档成笔记的两种常见做法：
+AI 给出有价值的讨论或方案后，想归档成笔记的两种常见做法：
+1. 同 session 让 AI 总结 → 消耗上下文、打断开发节奏
+2. 事后手写 → 容易丢失
 
-1. **同 session 让 AI 总结** → 消耗大量上下文、打断开发节奏
-2. **事后手写** → 懒，最终丢失
-
-note-distill 的做法：一条 `/note` 指令派发任务到**后台 fork subagent**，它继承当前会话的完整上下文，独立完成「识别 → 验证 → 按模板结构化 → 写入知识库」，主 session 立刻回到原任务。
-
-## 支持的知识库
-
-| Adapter | 状态 |
-|---|---|
-| Obsidian | ✅ v0.0.1 |
-| Notion | 计划中 |
-| 飞书文档 | 计划中 |
+note-distill：一条 `/note` 指令派发到后台 subagent，独立完成识别 → 按模板结构化 → 验证 → 写入，主 session 立刻回到原任务。
 
 ## Quick Start
 
 ### 1. 安装
 
 ```bash
-# 从 GitHub 安装
+# GitHub 安装
 /plugin install github.com/konanok/note-distill
 
-# 或从本地路径安装（开发用）
+# 本地路径安装（开发）
 /plugin install ~/Projects/Github/note-distill
 ```
 
-### 2. 写配置
+### 2. 初始化
 
 ```bash
-mkdir -p ~/.config/note-distill
-cp ~/Projects/Github/note-distill/skills/note/config.example.json \
-   ~/.config/note-distill/config.json
-# 编辑 config.json，至少填写 obsidian_vault_path
+/note-config
 ```
+
+按提示选择适配器（local-markdown / obsidian）、输出路径和默认 topic。
 
 ### 3. 使用
 
 ```
-/note                              # 自动判断深/浅
-/note quick                        # 短笔记（别名：fast / q / f）
-/note deep                         # 深度笔记（别名：d）
-/note deep NUMA 调度问题            # 可带 topic 提示
-/note --style til                  # 指定笔记风格
-/note deep --style evergreen       # 组合使用
+/note                            # 默认 topic（出厂 til）
+/note til                        # til topic
+/note adr NUMA 调度方案           # adr topic，带描述
+/note git stash 只暂存部分文件    # 不带 topic → 默认 topic + 描述
 ```
 
-## 笔记模式
+## 核心设计
 
-### Quick 模式（50-300 字）
+### Topic 系统
 
-适合：临时 tip、小技巧、一条命令
-
-产物：场景 + 代码块 + 可选备注
-
-### Deep 模式（通常 300-1500 字）
-
-适合：完整方案、原理问题、复杂 bug 根因
-
-产物：
-
-- TL;DR
-- 背景与问题
-- 核心原理
-- 解决方案（含代码）
-- 备选方案与取舍（表格）
-- 边界与陷阱
-- 验证证据
-- 关联条目（wikilinks）
-- 修订历史
-
-## 笔记风格
-
-| 风格 | 适合场景 | 标题格式 | 强制模式 |
-|---|---|---|---|
-| `technical`（默认） | 技术方案沉淀 | 动词/名词短语 | 无 |
-| `til` | 碎片速记，知识种子 | `TIL: {动词短语}` | quick |
-| `evergreen` | 观点积累，知识网络 | 完整命题句 | deep |
+每个 topic 是一个目录，包含两个文件：
 
 ```
-/note --style til                  # 今日所学
-/note deep --style evergreen       # 沉淀一个观点
+<name>/
+├── prompt.md        # 领域判断标准 + 写作要求
+└── template.md      # 输出骨架（frontmatter + section + {{variable}}）
 ```
 
-## 所需工具权限
+**3 级优先级**：项目（`./.note-distill/topics/`）> 用户（`~/.config/note-distill/topics/`）> 出厂（`skills/note/topics/`）。
 
-fork subagent 继承主 session 的工具权限，需要：`Read`、`Write`、`Bash`、`SendMessage`（必需），`WebFetch`、`WebSearch`（按需验证时使用）。Claude Code 默认已开放，通常无需额外配置。
+**出厂 topic**：
 
+| Topic | 场景 |
+|---|---|
+| `til` | 碎片化速记。单个知识点，≤150 字 |
+| `adr` | 架构决策记录。方案选型、技术决策、取舍依据 |
 
+用户自定义：在 `topics_dir` 下建 `<name>/prompt.md` + `<name>/template.md`，`/note <name>` 自动识别。
 
-1. **主 session 零开销**：主 agent 只 spawn subagent，不做任何内容提炼
-2. **完整上下文**：`subagent_type="fork"` + `run_in_background=true`
-3. **深度强制**：deep 模板明令禁止流水账、直接转述对话
-4. **自适应验证**：subagent 按内容类型自主选验证手段（源码 / --help / WebFetch / 经验）
-5. **Adapter 设计**：知识库无关，新增目标只需添加 `adapters/<name>.md`
+### 配置
+
+```jsonc
+{
+  "adapter": "local-markdown",     // 或 "obsidian"
+  "output_dir": "/Users/xxx/notes",
+  // "obsidian_vault_path": "...", // obsidian 时用这个
+  "link_style": "markdown",        // markdown ([text](url)) 或 wikilink ([[概念名]])
+  "default_topic": "til",
+  "topics_dir": "~/.config/note-distill/topics",
+  "candidate_selection": { ... },
+  "candidate_analyzer": { ... }
+}
+```
+
+### Hook 系统（可选）
+
+被动记录会话事件，异步分析生成候选知识点。`/note` 时优先使用候选（primary path），无可选内容时 fallback 到完整对话历史。无需 `CLAUDE_CODE_FORK_SUBAGENT` 即可使用 primary path。
 
 ## 项目结构
 
 ```
 .
-├── .claude-plugin/         # Claude Code plugin 元信息
+├── .claude-plugin/           # Plugin 元信息
 │   └── plugin.json
+├── commands/
+│   └── note.md               # Slash command 入口
 ├── skills/
-│   ├── note/               # 核心 skill 逻辑
-│   │   ├── SKILL.md        # 主 agent 端流程 + spawn prompt 模板
-│   │   ├── config.example.json # 配置模板
-│   │   ├── styles/         # 笔记风格（technical / til / evergreen）
-│   │   ├── references/     # 行为规范 + 笔记模板
-│   │   ├── templates/      # markdown 模板（frontmatter + layout）
-│   │   └── adapters/       # 写入目标适配器（obsidian, local-markdown）
-│   ├── note-config/        # /note-config 命令
-│   └── note-check/         # /note-check 命令
-├── hooks/                  # Hook 系统（事件采集 + 候选分析）
-├── CLAUDE.md
-├── README.md
-├── CHANGELOG.md
-└── LICENSE
+│   ├── note/                 # 核心 skill
+│   │   ├── SKILL.md          # 主 agent 流程 + spawn prompt
+│   │   ├── config.example.json
+│   │   ├── references/       # Subagent 行为规范
+│   │   └── topics/           # 出厂 topic（til、adr）
+│   ├── note-config/          # /note-config
+│   └── note-check/           # /note-check
+├── hooks/                    # Hook 系统（事件采集 + 候选分析）
+└── CLAUDE.md
 ```
-
-## 路线图
-
-- [x] Obsidian adapter
-- [x] 三种笔记风格（technical / til / evergreen）
-- [x] TIL 种子笔记机制（`status: seed`）
-- [ ] Notion adapter
-- [ ] 飞书文档 adapter
-- [ ] `/note-search` 检索已有笔记
-- [ ] `/note-moc` 汇总 seed 笔记，生成 Map-of-Content 索引
-- [ ] 已有 quick/til 笔记升级为 deep 的流程
 
 ## License
 

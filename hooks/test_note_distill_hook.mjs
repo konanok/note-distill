@@ -924,7 +924,7 @@ function testMergeConfigCommand() {
     JSON.stringify({
       adapter: "local-markdown",
       output_dir: "/tmp/global",
-      default_style: "technical",
+      default_topic: "adr",
     }),
     "utf8",
   );

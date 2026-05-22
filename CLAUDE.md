@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-note-distill is a Claude Code plugin that forks a background subagent to distill technical discussions into structured notes. It supports multiple knowledge base targets (adapters) and note templates; v0.1.0 ships the Obsidian and local-markdown adapters. Invoked via `/note [<template>] [topic]`. All files are Markdown or JSON — no build step, linter, or test framework.
+note-distill is a Claude Code plugin that forks a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. All files are Markdown or JSON — no build step, linter, or test framework.
 
 ## Architecture
 
@@ -20,17 +20,17 @@ note-distill is a Claude Code plugin that forks a background subagent to distill
                                    │ candidates + event window
                                    ▼
 /note → commands/note.md (thin shell, argument-hint for tab completion)
-      → skills/note/SKILL.md (argument parsing, template resolution, config check, candidate/window extraction)
+      → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
       ├── Primary path (candidates or event window available):
       │   general-purpose subagent (background) — explicit input only, no fork needed
       └── Fallback path (nothing available):
           general-purpose subagent (background) — may inherit full history if fork configured
 
 Subagent flow (both paths):
-  1. note-writer-protocol.md → workflow + candidate/window/full-history rules
-  2. templates/<name>.md → complete note skeleton (frontmatter + sections + {{variables}})
-  3. adapters/<name>.md → target-specific write conventions
-  4. fills template variables → validate-note.ts → writes note → marks candidates consumed → reports path via SendMessage
+  1. note-writer-protocol.md → mechanical workflow + bottom-line constraints
+  2. topics/<name>/prompt.md → domain judgment + writing standards
+  3. topics/<name>/template.md → complete note skeleton (frontmatter + sections + {{variables}})
+  4. fills template variables → validate-note.ts → writes note (mkdir + Write, or hooks/write-<adapter>.ts) → marks candidates consumed → reports path via SendMessage
 
 /note-config → skills/note-config/SKILL.md (creates ~/.config/note-distill/)
 /note-check → skills/note-check/SKILL.md (validates configuration)
@@ -104,48 +104,35 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Key conventions
 
 - **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Template system**: Flat lookup: user `<templates_dir>/<name>.md` → built-in `templates/<name>.md`. `/note til`, `/note design`, `/note technical`, or user-defined `/note <name>`. Default template via config `default_template` (factory default: `til`).
+- **Topic system**: 3-level lookup: project `.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, or user-defined `/note <name>`. Default via config `default_topic` (factory: `til`). User topics override built-in ones.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` + `need-human-review` tags (for human review), and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
-- **Adapters**: One file per output target under `adapters/`. Currently supports `obsidian` (Obsidian vault) and `local-markdown` (local directory). To add Notion/Feishu: new adapter file + new `adapter` value in config + config fields for that target.
+- **Output targets**: Controlled via config `adapter` + `link_style` fields. `local-markdown` → `output_dir`, `[text](url)` links. `obsidian` → `obsidian_vault_path`, `[[wikilink]]` links. Extend via `hooks/write-<adapter>.ts` script.
 - **All `.md` files use LF line endings**. Hook `.ts`/`.mjs` files use LF.
-- **User templates**: Users customize note format by creating markdown templates at `~/.config/note-distill/templates/<name>.md`. Templates use `{{variable}}` placeholders. Plugin ships default templates under `skills/note/templates/`. User templates override shipped ones.
 - **Config fields**: when adding a new config field, update both `config.example.json` and (if present locally) `docs/DESIGN.md` §4.1. Both global config and hook `loadConfig()` must support the new field.
 - **`docs/` is gitignored**: design docs and ADRs are local-only, not part of the distributed plugin.
 
-## Where to change what
+## File responsibility (single-responsibility)
 
-| Task | File |
-|---|---|
-| Slash command (tab completion, arg hint) | `commands/note.md` |
-| Main flow / spawn logic | `skills/note/SKILL.md` |
-| Subagent workflow / identification / verification rules | `skills/note/references/note-writer-protocol.md` |
-| Note templates (complete skeleton with `{{variables}}`) | `skills/note/templates/<name>.md` |
-| Obsidian write conventions (two-tier: Skill → Write fallback) | `skills/note/adapters/obsidian.md` |
-| Local markdown write conventions | `skills/note/adapters/local-markdown.md` |
-| Add a new output target (Notion/Feishu) | New `skills/note/adapters/<name>.md` |
-| Init / check commands | `skills/note-config/SKILL.md` / `skills/note-check/SKILL.md` |
-| Hook triggers (UserPromptSubmit, Stop) | `hooks/hooks.json` |
-| Session event collector + candidate analyzer | `hooks/note_distill_hook.ts` |
-| Note validation (section/frontmatter/variable checks) | `hooks/validate-note.ts` |
-| Cross-platform hook wrapper | `hooks/run-hook.cmd` |
-| Hook integration tests | `hooks/test_note_distill_hook.mjs` |
-
-## Directory responsibility (single-responsibility)
-
-| Directory / file | Responsibility | Must NOT contain |
+| File | Responsibility | Must NOT contain |
 |---|---|---|
 | `commands/note.md` | Slash command UX — thin shell, delegates to skill | Note writing logic |
 | `skills/note/SKILL.md` | Main agent flow + spawn prompt template | Subagent execution logic |
-| `references/note-writer-protocol.md` | Subagent behavior spec (identification, verification, validation, reporting) | Note formatting |
-| `templates/<name>.md` | Complete note skeleton (frontmatter + sections + `{{variable}}` placeholders) | Writing philosophy (now embedded in the template itself) |
-| `adapters/<name>.md` | Platform-specific write conventions (filename, path, write method) | Content organization rules |
+| `references/note-writer-protocol.md` | Mechanical steps + bottom-line constraints (§0 boundary table) | Domain judgment rules (those live in topic prompt.md) |
+| `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |
+| `topics/<name>/template.md` | Complete note skeleton (frontmatter + sections + {{variable}} placeholders) | Writing philosophy (now in prompt.md) |
 | `hooks/hooks.json` | Hook trigger registration (UserPromptSubmit, Stop) | Subagent logic |
 | `hooks/note_distill_hook.ts` | Event collection, candidate analysis, selection, consumption | Note writing |
-| `hooks/validate-note.ts` | Section structure, frontmatter, variable & style constraint validation | Note generation |
-| `skills/note-config/SKILL.md` | Initialize user config and templates | Note writing |
+| `hooks/validate-note.ts` | Section structure, frontmatter, variable validation | Note generation |
+| `hooks/run-hook.cmd` | Cross-platform hook wrapper | — |
+| `hooks/test_note_distill_hook.mjs` | Hook integration tests | — |
+| `skills/note-config/SKILL.md` | Initialize user config and topics | Note writing |
 | `skills/note-check/SKILL.md` | Validate user configuration | Note writing |
+
+**Extension point — custom write scripts**: To add adapter-specific write logic (e.g. obsidian-cli), the plugin ships `hooks/write-<adapter>.ts`. The subagent prefers this over direct `Write`; failure falls back to `mkdir + Write`. Users do not customize this — it's a plugin developer extension point.
+
+**Protocol vs prompt boundary**: When `note-writer-protocol.md` and a topic's `prompt.md` conflict, protocol wins on workflow, validation, verification strategy, and reporting. prompt.md wins on domain judgment, writing style, and format constraints.
 
 ## Testing
 
@@ -155,17 +142,16 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 node --experimental-strip-types hooks/test_note_distill_hook.mjs
 ```
 
-Runs 14 tests covering: event collector redaction, fail-open on bad JSON, full wrapper→collector→analyzer pipeline, event window extraction, candidate selection (oldest/newest/priority/pick/all), topic filtering, source_refs context reading, model output parsing, fake analyzer, Claude→heuristic fallback, and consumed marking.
+Runs 32 tests covering: event collector redaction, fail-open on bad JSON, full wrapper→collector→analyzer pipeline, event window extraction, candidate selection (oldest/newest/priority/pick/all), topic filtering, source_refs context reading, model output parsing, fake analyzer, Claude→heuristic fallback, project config merge, analyzer locking (fresh + stale), merge-config command, consumed marking, and template validation (section/frontmatter/variable/code block/missing file).
 
 ### Manual (end-to-end)
 
-1. `/note git stash` → til template (default), quick note
-2. `/note design NUMA 调度` → design template
-3. `/note` (no args) → til template with no topic
-4. `/note technical <topic>` → technical template
-5. `/note --pick` → shows candidate pick list if candidates exist
-6. Frontmatter includes `ai-generated: true`, `TODO` + `need-human-review` tags, `source: note-distill:<platform>:<session-id>`
-7. Subagent reports path on completion via SendMessage
+1. `/note git stash` → til topic (default), quick capture
+2. `/note adr NUMA 调度` → adr topic
+3. `/note` (no args) → til topic with no description
+4. `/note --pick` → shows candidate pick list if candidates exist
+5. Frontmatter includes `ai-generated: true`, `TODO` + `need-human-review` tags, `source: note-distill:<platform>:<session-id>`, `topic: <name>`
+6. Subagent reports path on completion via SendMessage
 
 ## Release
 

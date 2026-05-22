@@ -1,6 +1,6 @@
 ---
-description: 把当前会话中的技术方案派发到后台 subagent，写入配置的知识库。
-argument-hint: [til|design|technical] [可选 topic]
+description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。出厂 til、adr，支持用户自定义 topic。
+argument-hint: [til|adr] [可选描述]
 ---
 
 调用 Skill("note-distill:note")，传入参数 "$ARGUMENTS"。

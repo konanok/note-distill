@@ -17,16 +17,15 @@ description: 诊断 note-distill 配置是否正确
    - 解析失败 → 报错 `.note-distill.json 不是合法的 JSON 文件`，结束。
    - 解析成功 → 与全局配置合并（项目覆盖全局，嵌套对象递归合并），继续用合并后的配置检查。
 
-3. 根据合并后配置的 `adapter` 字段检查：
+3. 根据合并后配置的 `adapter` 字段检查路径：
    - `local-markdown` → 检查 `output_dir`：为空则报"output_dir 未填写"；不为空则 `mkdir -p` 试建，失败则报"output_dir 不可写"
-   - `obsidian` → 检查 `obsidian_vault_path`：为空则报"obsidian_vault_path 未填写"；不为空则检查目录是否存在。
-     - **可选增强说明**：若环境中可用 `obsidian` skill，adapter 会优先复用该 skill 的 headless-safe 写入指导；若不可用或该路径需要 GUI，则自动降级到 Write 兜底路径（INFO 级，不影响结果）。
+   - `obsidian` → 检查 `obsidian_vault_path`：为空则报"obsidian_vault_path 未填写"；不为空则检查目录是否存在
    - 其他值 → 报"不支持的 adapter: <值>"
 
-4. 检查 `~/.config/note-distill/templates/` 目录下是否有至少一个 `.md` 文件：
-   - 无 → 提示"模板目录为空，建议执行 `/note-config` 重新生成默认模板"
+4. 检查 `~/.config/note-distill/topics/` 目录下是否有至少一个子目录（含 `prompt.md` + `template.md`）：
+   - 无 → 提示"topic 目录为空，建议执行 `/note-config` 重新生成默认 topic"
 
-5. 检查 `default_template` 是否已配置（缺失仅提示，不报错）
+5. 检查 `default_topic` 是否已配置（缺失仅提示，不报错）
 
 6. 检查 `candidate_selection`（缺失仅提示并使用默认值）：
    - `default_behavior` 若存在，必须是 `auto` / `pick` / `all`
@@ -38,10 +37,8 @@ description: 诊断 note-distill 配置是否正确
    - `model` 可为空；当 `provider=claude` 且为空时提示将使用 `claude-haiku-4-5-20251001`
    - `fallback` 若存在，必须是 `heuristic` / `none`
 
-8. 权限检查：按 adapter 选择目标根目录：
-   - `local-markdown` → `<target_root> = output_dir`
-   - `obsidian` → `<target_root> = obsidian_vault_path`
-   尝试 `mkdir -p <target_root>` 和 `Write` 一个测试文件到该目录：
+8. 权限检查：按 adapter 取目标根目录（`output_dir` 或 `obsidian_vault_path`），
+   尝试 `mkdir -p <target_root>` 和 `Write` 一个测试文件：
    - 成功 → 立即删除测试文件，通过
    - 失败 → 提示用户将以下规则添加到 `.claude/settings.local.json`：
      ```
@@ -52,6 +49,6 @@ description: 诊断 note-distill 配置是否正确
      ```
 
 9. 汇总报告：
-   - 全部通过 → ✅ 配置正常（全局 + 项目级合并）。可以用 `/note` 或 `/note <template>` 开始记笔记。
+   - 全部通过 → ✅ 配置正常（全局 + 项目级合并）。可以用 `/note` 或 `/note <topic>` 开始记笔记。
    - 有问题 → 逐项列出问题 + 修复建议
    - 若项目级配置存在 → 注明"已合并项目级配置 `./.note-distill.json`"

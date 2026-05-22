@@ -1,9 +1,9 @@
 ---
 title: {{title}}
-tags: [design, {{domain_tags}}, ai-generated, TODO, need-human-review]
+tags: [adr, {{domain_tags}}, ai-generated, TODO, need-human-review]
 ai-generated: true
 created: {{date}}
-template: design
+topic: adr
 source: note-distill:{{platform}}:{{session_id}}
 ---
 

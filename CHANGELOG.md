@@ -8,32 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **Breaking**: Flat template-based design replaces mode × style system. `/note [<template>] [topic]` — no more `quick`/`deep`/`auto` modes or `--style` flag.
-- Removed `styles/` directory; writing guidance is now embedded in templates.
-- Removed `subfolder_by_mode`, `default_style`, `style_overrides`, `auto_mode_heuristic` from config.
-- Added `default_template` config field (factory default: `til`).
-- New built-in templates: `til`, `design`, `technical`.
+- **Breaking**: Topic-driven architecture. `/note [<topic>] [描述]` — each topic bundles prompt.md (domain judgment) + template.md (output skeleton).
+- **Breaking**: Flat template design replaces mode × style system. `/note [<topic>] [描述]` — no more `quick`/`deep`/`auto` modes or `--style` flag.
+- Removed `styles/` directory; removed `templates/` directory, replaced with `topics/` (til, adr).
+- Config: `subfolder_by_mode`, `default_style`, `style_overrides`, `auto_mode_heuristic` removed; `default_template` → `default_topic`, `templates_dir` → `topics_dir`.
+- `note-writer-protocol.md` simplified to mechanical steps only; domain judgment moved to topic `prompt.md`.
 - Output path simplified: `<output_dir>/<date>-<slug>.md` (no mode subdirectory).
+- Removed `adapters/` directory; write logic unified in protocol §4. `adapter` + `link_style` config fields control target and link format.
 
 ### Added
-- Hook-based note candidate pipeline：`UserPromptSubmit` / `Stop` hooks 自动采集会话事件，异步分析生成候选知识点，`/note` 优先消费 candidates/event window，无需完整对话历史
-- 三种候选分析器：`claude`（LLM 分析）、`heuristic`（关键词匹配）、`fake`（测试用），支持 fallback 降级
-- 候选选择策略：`auto`（按 oldest/newest/priority 自动选）、`pick`（交互式选择）、`all`（实验性全选）
-- `/note --auto` / `--pick` / `--all` 命令行参数，可通过 config `candidate_selection` 段配置默认行为
-- 并发分析锁机制：防止多次 Stop 快速触发导致 candidates 文件竞态覆盖
-- 重分析保护：非确定性分析器重跑时保留已有 pending candidates，避免丢失
-- 事件窗口提取：自动识别最近两次 `/note` 间的事件范围，确保增量笔记边界正确
-- 项目级配置覆盖：`./.note-distill.json` 深度合并全局配置，按项目定制 adapter、输出路径等
-- `merge-config` CLI 命令：输出合并后配置，消除 subagent 手动合并的双源风险
-- TIL 模板 `{{upgrade_to}}` 变量：subagent 可判断知识点升级方向
-- `local-markdown` adapter 作为 Obsidian 之外的官方支持 adapter
-
-### Planned
-- Notion adapter
-- 飞书文档 adapter
-- `/note-search`：检索已有笔记
-- `/note-moc`：自动生成 Map-of-Content 索引
-- 已有 quick 笔记升级为 deep 的流程
+- Hook system: UserPromptSubmit/Stop triggers auto-collect session events, async analyze for note candidates via claude/heuristic/fake providers.
+- Candidate selection: auto (oldest/newest/priority), pick (interactive), all.
+- `merge-config` CLI command for resolved config output.
+- Project-level config: `./.note-distill.json` deep-merges over global config.
+- `link_style` config field: `markdown` for `[text](url)`, `wikilink` for `[[概念名]]`.
+- Extension point: `hooks/write-<adapter>.ts` for custom write scripts (falls back to `mkdir + Write`).
+- Secret redaction, PATH-based claude lookup, configurable lock timeout.
 
 ## [0.0.1] - 2026-05-09
 
