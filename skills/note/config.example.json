@@ -3,31 +3,15 @@
 
   "adapter": "local-markdown",
 
-  "_comment_path": "根据 adapter 填写对应的路径字段，不要同时出现 output_dir 和 obsidian_vault_path",
+  "_comment_path": "根据 adapter 填写对应的路径字段",
   "output_dir": "",
   "_obsidian_example": "如用 obsidian，替换上面 output_dir 为 obsidian_vault_path",
 
   "templates_dir": "~/.config/note-distill/templates",
   "_templates_dir_comment": "用户自定义模板目录，可省略（默认值如上）",
 
-  "subfolder_by_mode": {
-    "quick": "quick",
-    "deep": "deep"
-  },
-
-  "default_style": "technical",
-  "_style_options": "technical / til / evergreen",
-  "style_overrides": {
-    "_comment": "按模式覆盖风格，不设置则继承 default_style",
-    "quick": "til",
-    "deep": "technical"
-  },
-
-  "auto_mode_heuristic": {
-    "deep_if_tokens_gt": 2000,
-    "deep_if_files_referenced_gt": 2,
-    "deep_if_multiple_alternatives_discussed": true
-  },
+  "default_template": "til",
+  "_default_template_comment": "不指定模板时的默认模板名，出厂默认 til。可选: til, design, technical，或用户自定义的任何模板名",
 
   "candidate_selection": {
     "default_behavior": "auto",

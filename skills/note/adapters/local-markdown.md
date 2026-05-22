@@ -4,22 +4,21 @@
 
 ## 配置读取
 
-从 `~/.config/note-distill/config.json` 读以下字段：
+从 config 读以下字段：
 
 - `output_dir`：笔记输出目录的绝对路径（必填）
-- `subfolder_by_mode.quick` / `subfolder_by_mode.deep`：按模式分子目录（默认 `quick` / `deep`）
-- `templates_dir`：用户自定义模板目录（默认 `~/.config/note-distill/templates/`）。可省略，只用内置默认模板。
+- `templates_dir`：用户自定义模板目录（默认 `~/.config/note-distill/templates/`）。可省略。
 
 ## 模板解析
 
 ### 模板优先级
 
-模板文件是完整的笔记骨架（frontmatter + section 标题 + `{{variable}}` 占位），subagent 直接填充变量。按以下顺序查找，第一个存在的即使用：
+按以下顺序查找，第一个存在的即使用：
 
-1. `<templates_dir>/<style>-<mode>.md` — 用户风格+模式模板
-2. `<templates_dir>/<style>.md` — 用户风格模板
-3. `{SKILL_DIR}/templates/<style>-<mode>.md` — 内置风格+模式模板
-4. `{SKILL_DIR}/templates/<style>.md` — 内置风格模板
+1. `<templates_dir>/<TEMPLATE>.md` — 用户模板
+2. `{SKILL_DIR}/templates/<TEMPLATE>.md` — 内置模板
+
+`TEMPLATE` 由主 agent 在 spawn prompt 中传入。
 
 ### 模板变量
 
@@ -28,28 +27,26 @@
 | 变量 | 类型 | 说明 |
 |---|---|---|
 | `{{date}}` | 自动 | `YYYY-MM-DD`，执行 `date +%Y-%m-%d` |
-| `{{mode}}` | 自动 | `quick` / `deep` |
-| `{{style}}` | 自动 | `technical` / `til` / `evergreen` |
+| `{{template}}` | 自动 | 模板名，由主 agent 传入 |
 | `{{title}}` | AI | 笔记标题 |
 | `{{domain_tags}}` | AI | 领域标签，逗号分隔（如 `git, cli`），不超过 4 个 |
 | `{{slug}}` | AI | 文件名 slug，英文、小写、连字符分隔，最多 50 字符 |
 | `{{session_id}}` | 自动 | session ID，由主 agent 传入 |
 | `{{platform}}` | 自动 | 平台标识（`claude-code` 等），由主 agent 传入 |
-| `{{upgrade_to}}` | AI | 仅 TIL 风格，判断升级方向（`technical` / `evergreen` / `null`） |
-| `{{tldr}}` | AI | deep: TL;DR 内容 |
-| `{{background}}` | AI | deep: 背景与问题 |
-| `{{principles}}` | AI | deep: 核心原理 |
+| `{{tldr}}` | AI | TL;DR 内容 |
+| `{{background}}` | AI | 背景与问题 |
+| `{{principles}}` | AI | 核心原理 |
 | `{{solution}}` | AI | 解决方案/方案内容 |
-| `{{alternatives}}` | AI | deep: 备选方案与取舍 |
-| `{{boundaries}}` | AI | deep: 边界与陷阱 |
-| `{{verification}}` | AI | deep: 验证证据 |
+| `{{alternatives}}` | AI | 备选方案与取舍 |
+| `{{boundaries}}` | AI | 边界与陷阱 |
+| `{{verification}}` | AI | 验证证据 |
 | `{{related}}` | AI | 关联条目 |
-| `{{scenario}}` | AI | quick: 场景描述 |
-| `{{notes}}` | AI | quick: 备注（可为空） |
-| `{{core_argument}}` | AI | evergreen: 核心观点 |
-| `{{evidence}}` | AI | evergreen: 论据与支撑 |
-| `{{counterarguments}}` | AI | evergreen: 边界与反例 |
-| `{{deep_dive}}` | AI | til: 值得深入？（可为空） |
+| `{{scenario}}` | AI | 场景描述 |
+| `{{notes}}` | AI | 备注（可为空） |
+| `{{core_argument}}` | AI | 核心观点 |
+| `{{evidence}}` | AI | 论据与支撑 |
+| `{{counterarguments}}` | AI | 边界与反例 |
+| `{{extensions}}` | AI | 延伸方向（可为空） |
 
 ### 渲染与写入
 
@@ -62,12 +59,10 @@
 ## 文件落点
 
 ```
-<output_dir>/<OUTPUT_SUBDIR>/{{date}}-{{slug}}.md
+<output_dir>/{{date}}-{{slug}}.md
 ```
 
-> `OUTPUT_SUBDIR` 已由主 agent 解析（考虑风格覆盖），直接使用。如 til → `TIL`，evergreen → `Evergreen`，technical → `<subfolder_by_mode[mode]>`。
-
-例：`<output_dir>/quick/2026-05-11-git-squash-commits.md`
+例：`<output_dir>/2026-05-11-git-squash-commits.md`
 
 如果中间目录不存在，**必须先用 Bash 执行 `mkdir -p "<目标目录>"` 创建**。
 

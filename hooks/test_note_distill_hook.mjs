@@ -1095,7 +1095,9 @@ async function testValidateUnreplacedVariableInNote() {
   assert.match(result.stdout, /未替换/);
 }
 
-async function testValidateTilTitlePrefix() {
+// Style-specific constraints (TIL title prefix, char limit) have been removed
+// from validate-note.ts — these are now enforced by the template itself.
+async function testValidateTilTitlePrefixNoLongerEnforced() {
   const tmp = mkdtempSync(join(tmpdir(), "nd-test-"));
   const tmplPath = join(tmp, "template.md");
   const notePath = join(tmp, "note.md");
@@ -1104,7 +1106,7 @@ async function testValidateTilTitlePrefix() {
     { title: "TIL: {{title}}", tags: "[til, {{domain_tags}}]", style: "til" },
     "# TIL: {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 怎么做\n\n{{solution}}",
   );
-  // Missing TIL: prefix
+  // Title without TIL: prefix — validator no longer enforces this; template handles it
   const note = makeSimpleNote(
     { title: "git stash 保存部分文件", tags: "til, git", style: "til" },
     "# git stash 保存部分文件\n\n## 场景\n\n需要只暂存部分文件\n\n## 怎么做\n\ngit stash push -p",
@@ -1117,12 +1119,12 @@ async function testValidateTilTitlePrefix() {
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
     { encoding: "utf8" },
   );
+  // Should PASS — style-specific constraints have been removed from the validator
   assert.equal(
     result.status,
-    1,
-    `Expected FAIL for TIL without prefix, got: ${result.stdout}`,
+    0,
+    `Expected PASS (style constraints removed), got: ${result.stdout}`,
   );
-  assert.match(result.stdout, /TIL/);
 }
 
 async function testValidateNoteFileMissing() {
@@ -1240,7 +1242,7 @@ const tests = [
   testValidateFailsOnMissingSection,
   testValidateOptionalSectionCanBeMissing,
   testValidateUnreplacedVariableInNote,
-  testValidateTilTitlePrefix,
+  testValidateTilTitlePrefixNoLongerEnforced,
   testValidateNoteFileMissing,
   testValidateTemplateFileMissing,
   testValidateCodeBlockWithoutLanguage,

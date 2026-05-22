@@ -24,15 +24,14 @@ note-distill 的 `/note` 是后台 fork subagent 任务，必须能在 server / 
 
 ## 配置读取
 
-从 `~/.config/note-distill/config.json` 读以下字段：
+从 config 读以下字段：
 
 - `obsidian_vault_path`：vault 的绝对路径（必填；始终作为目标 vault 根目录）
-- `subfolder_by_mode.quick` / `subfolder_by_mode.deep`：按模式分子目录（默认 `quick` / `deep`）
 - `templates_dir`：用户自定义模板目录（默认 `~/.config/note-distill/templates/`）。可省略。
 
 ## 模板解析
 
-和 local-markdown adapter 共用同一套模板系统。详见 `local-markdown.md` 的"模板解析"章节。模板文件是完整的笔记骨架（frontmatter + section 标题 + `{{variable}}` 占位），subagent 直接填充变量。渲染后得到**完整笔记内容字符串**（含 frontmatter + 正文），供后续写入步骤使用。
+模板解析和变量填充与 local-markdown adapter 共用同一套模板系统。
 
 ## 工具探测与降级
 
@@ -52,14 +51,13 @@ except:
 ## 文件落点（两路共享）
 
 ```
-<vault_root>/<OUTPUT_SUBDIR>/{{date}}-{{slug}}.md
+<vault_root>/{{date}}-{{slug}}.md
 ```
 
-- `OUTPUT_SUBDIR` 已由主 agent 解析（考虑风格覆盖），直接使用
 - `<vault_root>` 始终来自 config 的 `obsidian_vault_path`
 - Obsidian skill 不得改写目标 vault；若 skill 只能写入其自行解析的默认/当前 vault，且无法确认该 vault 等于 `obsidian_vault_path`，必须降级到 Write
 
-例：`<vault>/TIL/2026-05-11-git-squash-commits.md`
+例：`<vault>/2026-05-11-git-squash-commits.md`
 
 ## 文件名规则（两路共享）
 
@@ -73,7 +71,7 @@ except:
 无论 skill 内部使用什么工具，文件冲突语义都由 note-distill adapter 统一控制：
 
 ```
-stem = "<vault>/<OUTPUT_SUBDIR>/<date>-<slug>"
+stem = "<vault>/<date>-<slug>"
 target = "${stem}.md"
 n = 2
 while [ -f "$target" ]; do
@@ -104,13 +102,13 @@ done
 ### 路径 2：Write 兜底
 
 ```bash
-mkdir -p "<vault>/<OUTPUT_SUBDIR>"
+mkdir -p "<vault>"
 ```
-然后 `Write` 工具写入 `<vault>/<OUTPUT_SUBDIR>/<filename>.md`，`content` 为渲染后完整字符串。
+然后 `Write` 工具写入 `<vault>/<filename>.md`，`content` 为渲染后完整字符串。
 
 ## Wikilinks 处理（两路共享）
 
-在 deep 模式笔记中主动添加 `[[概念名]]`：
+在笔记中主动添加 `[[概念名]]`：
 
 - 识别标准术语（如 `[[NUMA]]`、`[[git rebase]]`）
 - 每篇 3-8 个为宜

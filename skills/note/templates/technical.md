@@ -3,8 +3,7 @@ title: {{title}}
 tags: [{{domain_tags}}, ai-generated, TODO, need-human-review]
 ai-generated: true
 created: {{date}}
-mode: deep
-style: technical
+template: technical
 source: note-distill:{{platform}}:{{session_id}}
 ---
 
@@ -41,7 +40,3 @@ source: note-distill:{{platform}}:{{session_id}}
 ## 关联条目
 
 {{related}}
-
-## 修订历史
-
-- {{date}}: 初建（note-distill auto）

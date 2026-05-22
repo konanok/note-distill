@@ -3,11 +3,8 @@ title: TIL: {{title}}
 tags: [til, {{domain_tags}}, ai-generated, TODO, need-human-review]
 ai-generated: true
 created: {{date}}
-mode: quick
-style: til
+template: til
 source: note-distill:{{platform}}:{{session_id}}
-status: seed
-upgrade_to: {{upgrade_to}}
 ---
 
 # TIL: {{title}}
@@ -20,6 +17,6 @@ upgrade_to: {{upgrade_to}}
 
 {{solution}}
 
-## 值得深入？（可选）
+## 延伸
 
-{{deep_dive}}
+{{extensions}}

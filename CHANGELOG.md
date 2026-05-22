@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Breaking**: Flat template-based design replaces mode × style system. `/note [<template>] [topic]` — no more `quick`/`deep`/`auto` modes or `--style` flag.
+- Removed `styles/` directory; writing guidance is now embedded in templates.
+- Removed `subfolder_by_mode`, `default_style`, `style_overrides`, `auto_mode_heuristic` from config.
+- Added `default_template` config field (factory default: `til`).
+- New built-in templates: `til`, `design`, `technical`.
+- Output path simplified: `<output_dir>/<date>-<slug>.md` (no mode subdirectory).
+
 ### Added
 - Hook-based note candidate pipeline：`UserPromptSubmit` / `Stop` hooks 自动采集会话事件，异步分析生成候选知识点，`/note` 优先消费 candidates/event window，无需完整对话历史
 - 三种候选分析器：`claude`（LLM 分析）、`heuristic`（关键词匹配）、`fake`（测试用），支持 fallback 降级

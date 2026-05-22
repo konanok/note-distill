@@ -1,12 +1,10 @@
 ---
 title: {{title}}
-tags: [evergreen, {{domain_tags}}, ai-generated, TODO, need-human-review]
+tags: [design, {{domain_tags}}, ai-generated, TODO, need-human-review]
 ai-generated: true
 created: {{date}}
-mode: deep
-style: evergreen
+template: design
 source: note-distill:{{platform}}:{{session_id}}
-status: growing
 ---
 
 # {{title}}
@@ -18,6 +16,10 @@ status: growing
 ## 论据与支撑
 
 {{evidence}}
+
+## 备选方案
+
+{{alternatives}}
 
 ## 边界与反例
 

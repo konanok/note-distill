@@ -26,7 +26,7 @@ description: 诊断 note-distill 配置是否正确
 4. 检查 `~/.config/note-distill/templates/` 目录下是否有至少一个 `.md` 文件：
    - 无 → 提示"模板目录为空，建议执行 `/note-config` 重新生成默认模板"
 
-5. 检查 `default_style` 等常用字段是否已配置（缺失仅提示，不报错）
+5. 检查 `default_template` 是否已配置（缺失仅提示，不报错）
 
 6. 检查 `candidate_selection`（缺失仅提示并使用默认值）：
    - `default_behavior` 若存在，必须是 `auto` / `pick` / `all`
@@ -41,7 +41,7 @@ description: 诊断 note-distill 配置是否正确
 8. 权限检查：按 adapter 选择目标根目录：
    - `local-markdown` → `<target_root> = output_dir`
    - `obsidian` → `<target_root> = obsidian_vault_path`
-   尝试 `mkdir -p <target_root>/quick` 和 `Write` 一个测试文件到该目录：
+   尝试 `mkdir -p <target_root>` 和 `Write` 一个测试文件到该目录：
    - 成功 → 立即删除测试文件，通过
    - 失败 → 提示用户将以下规则添加到 `.claude/settings.local.json`：
      ```
@@ -52,6 +52,6 @@ description: 诊断 note-distill 配置是否正确
      ```
 
 9. 汇总报告：
-   - 全部通过 → ✅ 配置正常（全局 + 项目级合并）。可以使用 `/note` 开始记笔记。
+   - 全部通过 → ✅ 配置正常（全局 + 项目级合并）。可以用 `/note` 或 `/note <template>` 开始记笔记。
    - 有问题 → 逐项列出问题 + 修复建议
    - 若项目级配置存在 → 注明"已合并项目级配置 `./.note-distill.json`"

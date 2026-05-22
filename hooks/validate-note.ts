@@ -10,7 +10,6 @@
  *      标注"（可选）"的 section 不强制。
  *   2. Frontmatter: 模板 frontmatter 中的必填字段必须存在且非空。
  *      标记为 {{...}} 的字段如未替换则报错。
- *   3. 风格硬约束: til 标题必须以 TIL: 开头，字数 ≤ 150。
  *
  * 退出码: 0 = PASS, 1 = FAIL
  */
@@ -153,28 +152,8 @@ function validate(): void {
     }
   }
 
-  // 4. 风格硬约束
-  const isTil = noteFM?.["style"] === "til";
-  if (isTil) {
-    const title = noteFM?.["title"] || "";
-    if (!title.startsWith("TIL:")) {
-      errors.push({
-        level: "HARD",
-        message: `TIL 标题必须以 "TIL:" 开头: "${title}"`,
-      });
-    }
-    const charCount = countCharsWithoutCodeBlocks(noteContent);
-    if (charCount > 150) {
-      errors.push({
-        level: "WARN",
-        message: `TIL 正文字数超出 150 字上限 (${charCount} 字)`,
-      });
-    }
-  }
-
-  // 5. 代码块 language 标注（软约束）
+  // 4. 代码块 language 标注（软约束）
   const codeBlocks = noteContent.matchAll(/```(\S*)\n/g);
-  let codeBlockLine = 1;
   for (const m of codeBlocks) {
     if (m[1] === "") {
       const lineNum = noteContent.substring(0, m.index!).split("\n").length;
