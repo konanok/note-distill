@@ -1,10 +1,17 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. `AGENTS.md` is a symlink to this file for cross-tool compatibility (Codex / CodeBuddy / Cursor read `AGENTS.md` by convention) — edit only `CLAUDE.md`.
 
 ## Project overview
 
-note-distill is a Claude Code plugin that forks a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. All files are Markdown or JSON — no build step, linter, or test framework.
+note-distill is a Claude Code plugin that forks a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. No build step, no linter, no general test framework — but `hooks/test_note_distill_hook.mjs` is a hand-rolled integration test runner for the hook pipeline.
+
+## Hard boundaries (read first)
+
+- **Main agent never summarizes or distills** — it only parses args, reads config, runs candidate/window helpers, and spawns the subagent. All writing work happens in the subagent.
+- **Never hardcode `{SKILL_DIR}`** — always inject from the Skill tool's "Base directory for this skill" output. The plugin may be installed anywhere.
+- **Never hand-merge global + project config** — always invoke `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` for the single source of truth.
+- **`docs/` is gitignored** — do not add user-facing docs there expecting them to ship with the plugin.
 
 ## Architecture
 
@@ -39,7 +46,7 @@ Subagent flow (both paths):
 Plugin manifest: `.claude-plugin/plugin.json`
 Slash command: `commands/note.md` (thin shell → delegates to `note-distill:note` skill)
 
-**No-summarization rule**: The main agent only parses args, reads config, runs candidate/window helpers, and spawns. It must never summarize or distill content itself. The subagent does all writing work independently.
+**No-summarization rule**: see "Hard boundaries" above.
 
 **Primary vs fallback**: The hook system (`hooks/`) records session events and produces note candidates via an analyzer. When candidates or event window data is available, the subagent uses that explicit input (primary path, no fork needed). Only when nothing is available does it fall back to inheriting full conversation history (fallback path — requires `CLAUDE_CODE_FORK_SUBAGENT=1`, experimental). Set via `.claude/settings.local.json` `env` field (recommended) or shell profile.
 
@@ -98,13 +105,15 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 - **No build step** — all files are Markdown or JSON interpreted at runtime. Edit and save; changes take effect immediately (except SKILL.md frontmatter name/description changes, which need `/reload-plugins`).
 - **Test without installing:** `claude --plugin-dir ~/Projects/Github/note-distill`
+- **Install as plugin (dev):** `/plugin install ~/Projects/Github/note-distill`
 - **Run hook tests:** `node --experimental-strip-types hooks/test_note_distill_hook.mjs` (covers event collection, redaction, candidate pipeline, selection, context, and consumption)
 - **Run a single test:** pipe subset of test data through the CLI — e.g. `echo '{"event":"..."}' | node --experimental-strip-types hooks/note_distill_hook.ts collect`
+- **Validate a note manually:** `node --experimental-strip-types hooks/validate-note.ts <note.md> --template <template.md>` (exit 0 = PASS, 1 = FAIL)
 
 ## Key conventions
 
 - **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Topic system**: 3-level lookup: project `.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, or user-defined `/note <name>`. Default via config `default_topic` (factory: `til`). User topics override built-in ones.
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, or user-defined `/note <name>`. Default via config `default_topic` (factory: `til`). User topics override built-in ones.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` + `need-human-review` tags (for human review), and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
@@ -142,7 +151,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 node --experimental-strip-types hooks/test_note_distill_hook.mjs
 ```
 
-Runs 32 tests covering: event collector redaction, fail-open on bad JSON, full wrapper→collector→analyzer pipeline, event window extraction, candidate selection (oldest/newest/priority/pick/all), topic filtering, source_refs context reading, model output parsing, fake analyzer, Claude→heuristic fallback, project config merge, analyzer locking (fresh + stale), merge-config command, consumed marking, and template validation (section/frontmatter/variable/code block/missing file).
+Covers: event collector redaction, fail-open on bad JSON, full wrapper→collector→analyzer pipeline, event window extraction, candidate selection (oldest/newest/priority/pick/all), topic filtering, source_refs context reading, model output parsing, fake analyzer, Claude→heuristic fallback, project config merge, analyzer locking (fresh + stale), merge-config command, consumed marking, and template validation (section/frontmatter/variable/code block/missing file).
 
 ### Manual (end-to-end)
 
