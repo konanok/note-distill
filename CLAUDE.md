@@ -26,8 +26,7 @@ note-distill is a Claude Code plugin that forks a background subagent to distill
                     └──────────────┬──────────────────────┘
                                    │ candidates + event window
                                    ▼
-/note → commands/note.md (thin shell, argument-hint for tab completion)
-      → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
+/note-distill:note → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
       ├── Primary path (candidates or event window available):
       │   general-purpose subagent (background) — explicit input only, no fork needed
       └── Fallback path (nothing available):
@@ -44,7 +43,6 @@ Subagent flow (both paths):
 ```
 
 Plugin manifest: `.claude-plugin/plugin.json`
-Slash command: `commands/note.md` (thin shell → delegates to `note-distill:note` skill)
 
 **No-summarization rule**: see "Hard boundaries" above.
 
@@ -126,7 +124,6 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 | File | Responsibility | Must NOT contain |
 |---|---|---|
-| `commands/note.md` | Slash command UX — thin shell, delegates to skill | Note writing logic |
 | `skills/note/SKILL.md` | Main agent flow + spawn prompt template | Subagent execution logic |
 | `references/note-writer-protocol.md` | Mechanical steps + bottom-line constraints (§0 boundary table) | Domain judgment rules (those live in topic prompt.md) |
 | `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |

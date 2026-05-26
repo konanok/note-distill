@@ -1,6 +1,6 @@
 ---
 title: {{title}}
-date: {{date}}
+created: {{date}}
 status: proposed
 deciders: []
 consulted: []

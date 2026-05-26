@@ -8,8 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- **Breaking**: `adr` topic redesigned to align with [MADR 3 short](https://adr.github.io/madr/) standard. New body structure: 背景与问题陈述 / 决策驱动因素 / 备选方案 / 决策结果（含 ### 后果）/ 验证方式 / 各方案利弊. New frontmatter fields: `date`, `status` (defaults `proposed`), `deciders`, `consulted`, `informed`. Removed `created` (replaced by `date`).
-- **Breaking**: `til` topic frontmatter renames `created` → `date` for consistency with `adr` topic. Existing til notes using `created` remain readable but Dataview/Obsidian queries that filter on `created` should be updated to `date OR created` to cover both old and new notes.
+- **Breaking**: `adr` topic redesigned to align with [MADR 3 short](https://adr.github.io/madr/) standard. New body structure: 背景与问题陈述 / 决策驱动因素 / 备选方案 / 决策结果（含 ### 后果）/ 验证方式 / 各方案利弊. New frontmatter fields: `status` (defaults `proposed`), `deciders`, `consulted`, `informed`.
 - `adr` template now embeds per-section HTML comments specifying what to write / when to leave blank — guards AI against fabricating content for fields it can't confidently fill. All blank-fallback messages follow a unified phrasing `（X 未在对话中讨论，待补充）` so reviewers can `grep "待补充"` across the vault.
 - `adr` prompt: hard criteria for what qualifies as ADR (≥2 options upfront + engineering tradeoff), explicit `status` rules (default `proposed`; only `accepted` with explicit "已实施/已上线" evidence; ambiguity → fall back to `proposed`), retrospective handling (including the dual-layer "复盘 + 重新评估" case → produce only one new `proposed` ADR), third-person voice, data-over-adjectives style.
 - Old ADR notes are NOT auto-migrated — keeping with append-only ADR convention; old notes remain valid in their original format. `hooks/validate-note.ts` only enforces structure when explicitly run with `--template`, so existing notes are not auto-checked against the new schema.
