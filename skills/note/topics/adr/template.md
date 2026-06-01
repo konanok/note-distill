@@ -1,14 +1,16 @@
 ---
-title: {{title}}
+title: "{{title}}"
+type: adr
 created: {{date}}
+updated: {{date}}
 status: proposed
 deciders: []
 consulted: []
 informed: []
 ai-generated: true
-topic: adr
+reviewed: false
 source: note-distill:{{platform}}:{{session_id}}
-tags: [adr, {{domain_tags}}, ai-generated, TODO, need-human-review]
+tags: [adr, {{domain_tags}}, ai-generated, TODO]
 ---
 
 # {{title}}

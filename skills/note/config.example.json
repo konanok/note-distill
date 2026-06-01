@@ -7,9 +7,10 @@
   "_comment_path": "根据 adapter 填写对应的路径字段",
   "output_dir": "",
   "_obsidian_example": "如用 obsidian，替换上面 output_dir 为 obsidian_vault_path",
+  "_llm_wiki_example": "如要把笔记写入 Karpathy 风格的 LLM Wiki，output_dir 指向 wiki 仓的 wiki/pages/notes/ 目录，link_style 设为 wikilink",
 
   "link_style": "markdown",
-  "_link_style_comment": "链接风格：markdown（[text](url)）或 wikilink（[[概念名]]）。obsidian 用户建议 wikilink",
+  "_link_style_comment": "链接风格：markdown（[text](url)）或 wikilink（[[概念名]]）。obsidian / LLM Wiki 用户建议 wikilink",
 
   "default_topic": "til",
   "_default_topic_comment": "不指定 topic 时的默认值，出厂默认 til。可选: til, adr，或用户自定义的任何 topic",

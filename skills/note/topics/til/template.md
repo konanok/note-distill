@@ -1,9 +1,11 @@
 ---
-title: TIL: {{title}}
-tags: [til, {{domain_tags}}, ai-generated, TODO, need-human-review]
+title: "TIL: {{title}}"
+type: til
+tags: [til, {{domain_tags}}, ai-generated, TODO]
 ai-generated: true
+reviewed: false
 created: {{date}}
-topic: til
+updated: {{date}}
 source: note-distill:{{platform}}:{{session_id}}
 follow-up: []
 ---
