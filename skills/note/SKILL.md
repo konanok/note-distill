@@ -24,10 +24,22 @@ argument-hint: [til|adr] [可选描述]
 
 | 变量 | 来源 |
 |---|---|
-| PLATFORM | `$CLAUDE_CODE_SESSION_ID` 非空 → `claude-code`，否则 `unknown` |
+| PLATFORM | 见下方三级判断 |
 | DATA_DIR | `$NOTE_DISTILL_DATA_DIR` 或 `~/.local/share/note-distill` |
 | CANDIDATE_LOG_PATH | `<DATA_DIR>/sessions/<SESSION_ID>/note_candidates.jsonl` |
 | EVENT_LOG_PATH | `<DATA_DIR>/sessions/<SESSION_ID>/events.jsonl` |
+
+**PLATFORM 判断（三级）**：
+1. `$CLAUDE_CODE_SESSION_ID` 非空 → `claude-code`
+2. 运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts find-session --cwd <当前工作目录>` → 返回 JSON 中的 `platform` 字段
+3. 以上均无 → `unknown`
+
+**SESSION_ID 判断（三级）**：
+1. `$CLAUDE_CODE_SESSION_ID` 非空 → 用它
+2. 运行上方 `find-session` 命令 → 返回 JSON 中的 `session_id` 字段
+3. 以上均无 → `unknown`
+
+> `find-session` 扫描 `DATA_DIR/sessions/*/events.jsonl`，匹配 `cwd` 与当前工作目录一致的最新 session，并从 `transcript_path` 推导平台（`.claude/` → `claude-code`，`CodeBuddyExtension` 或 `.codebuddy/` → `codebuddy`）。跨平台，不依赖 macOS 专属环境变量。
 
 SESSION_ID 非 `unknown` 且 helper（`{SKILL_DIR}/../../hooks/note_distill_hook.ts`）存在时：
 
@@ -85,7 +97,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 
 输入：
   TOPIC = {name}              TOPIC_HINT = "{text}"
-  SKILL_DIR = {dir}           PLATFORM = {claude-code|unknown}
+  SKILL_DIR = {dir}           PLATFORM = {claude-code|codebuddy|unknown}
   SESSION_ID = {id}
   COVERAGE = {full|partial|empty}
   SOURCE_PATH = {primary|fallback}

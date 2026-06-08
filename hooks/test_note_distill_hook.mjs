@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,7 +26,9 @@ function run(command, { input, env, cwd } = {}) {
   });
   if (result.status !== 0) {
     throw new Error(
-      `Command failed: ${command.join(" ")}\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`,
+      `Command failed: ${command.join(" ")}\nSTDOUT:\n${
+        result.stdout
+      }\nSTDERR:\n${result.stderr}`
     );
   }
   return result;
@@ -42,7 +50,7 @@ function writeJsonl(path, records) {
   writeFileSync(
     path,
     records.map((record) => JSON.stringify(record)).join("\n") + "\n",
-    "utf8",
+    "utf8"
   );
 }
 
@@ -61,7 +69,7 @@ function heuristicConfigEnv(dir) {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   return { NOTE_DISTILL_CONFIG: configPath };
 }
@@ -88,7 +96,7 @@ async function testCollectorRecordsAndRedacts() {
     }),
   });
   const records = readJsonl(
-    join(dir, "sessions", "redact-test", "events.jsonl"),
+    join(dir, "sessions", "redact-test", "events.jsonl")
   );
   assert.equal(records.length, 1);
   const prompt = records[0].payload.prompt;
@@ -107,7 +115,7 @@ function testCollectorFailOpenOnBadJson() {
   assert.equal(JSON.parse(result.stdout).continue, true);
   assert.equal(
     existsSync(join(dir, "logs", "session-collector-error.log")),
-    true,
+    true
   );
 }
 
@@ -136,10 +144,10 @@ async function testWrapperInvokesCollectorAndAnalyzer() {
   const sessionDir = join(dir, "sessions", "wrapper-flow");
   assert.deepEqual(
     readJsonl(join(sessionDir, "events.jsonl")).map((record) => record.event),
-    ["UserPromptSubmit", "Stop"],
+    ["UserPromptSubmit", "Stop"]
   );
   const candidates = await waitForJsonl(
-    join(sessionDir, "note_candidates.jsonl"),
+    join(sessionDir, "note_candidates.jsonl")
   );
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].status, "pending");
@@ -174,7 +182,7 @@ function testExtractNoteWindow() {
     result.events
       .filter((event) => event.event === "UserPromptSubmit")
       .map((event) => event.payload.prompt),
-    ["新的技术讨论"],
+    ["新的技术讨论"]
   );
   // Window built on a log whose first user prompt is a normal discussion
   // (not /note) means the hook was online when the session began.
@@ -201,7 +209,7 @@ function testWindowReportsPartialCoverageWhenHookJoinedMidSession() {
   assert.equal(result.previous_note, null);
   assert.equal(
     result.current_note.prompt,
-    "/note 记录一下刚才聊的 NUMA 调度方案",
+    "/note 记录一下刚才聊的 NUMA 调度方案"
   );
 }
 
@@ -228,7 +236,7 @@ function testCandidatesCommandSurfacesCoverage() {
   ]);
   writeJsonl(candidatesPath, []);
   const result = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout,
+    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout
   );
   assert.equal(result.coverage, "partial");
 }
@@ -273,7 +281,7 @@ function testAnalyzerAndCandidateExtraction() {
     },
   ]);
   const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath)).stdout,
+    run(nodeCli("candidates", candidatesPath)).stdout
   );
   assert.deepEqual(extracted.selected_candidate_ids, [
     candidates[0].candidate_id,
@@ -307,18 +315,18 @@ function testContextReadsCandidateSourceRefs() {
         { kind: "event_range", path: eventsPath, start_index: 1, end_index: 2 },
       ],
     }),
-    "utf8",
+    "utf8"
   );
   const context = JSON.parse(run(nodeCli("context", candidatePath)).stdout);
   assert.equal(context.contexts.length, 1);
   assert.deepEqual(
     context.contexts[0].events.map(
-      (event) => event.payload.prompt || event.payload.last_assistant_message,
+      (event) => event.payload.prompt || event.payload.last_assistant_message
     ),
     [
       "这个方案应该用 source_refs 补上下文",
       "方案：按 candidate source_refs 读取局部上下文。",
-    ],
+    ]
   );
 }
 
@@ -353,7 +361,7 @@ function testModelJsonParserFixture() {
         },
       ],
     }),
-    "utf8",
+    "utf8"
   );
   const parsed = JSON.parse(
     run(
@@ -363,9 +371,9 @@ function testModelJsonParserFixture() {
         "--events",
         eventsPath,
         "--provider",
-        "fake-model",
-      ),
-    ).stdout,
+        "fake-model"
+      )
+    ).stdout
   );
   assert.equal(parsed.candidates.length, 1);
   assert.equal(parsed.candidates[0].type, "architecture");
@@ -387,7 +395,7 @@ function testFakeAnalyzerProvider() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeJsonl(eventsPath, [
     {
@@ -424,7 +432,7 @@ function testClaudeAnalyzerFallsBackToHeuristic() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeJsonl(eventsPath, [
     {
@@ -447,8 +455,8 @@ function testClaudeAnalyzerFallsBackToHeuristic() {
   assert.equal(candidates[0].analyzer.fallback_from, "claude");
   assert.ok(
     ["claude_not_found", "claude_failed"].includes(
-      candidates[0].analyzer.reason,
-    ),
+      candidates[0].analyzer.reason
+    )
   );
 }
 
@@ -466,7 +474,7 @@ function testClaudeAnalyzerFallbackNoneReturnsEmpty() {
         fallback: "none",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeJsonl(eventsPath, [
     {
@@ -501,7 +509,7 @@ function testMultiStopPreservesConsumedStatus() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   // First analysis: UserPrompt A → Stop A triggers analyze, produces candidate A
   writeJsonl(eventsPath, [
@@ -533,8 +541,8 @@ function testMultiStopPreservesConsumedStatus() {
       "--ids",
       candId,
       "--note-path",
-      "/tmp/note.md",
-    ),
+      "/tmp/note.md"
+    )
   );
   const afterMark = readJsonl(candidatesPath);
   assert.equal(afterMark[0].status, "consumed");
@@ -600,7 +608,7 @@ function testCandidateExtractionFiltersByTopic() {
     },
   ]);
   const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout,
+    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout
   );
   assert.equal(extracted.topic_matched, true);
   assert.deepEqual(extracted.selected_candidate_ids, ["jsonl"]);
@@ -618,7 +626,7 @@ function testCandidateExtractionReportsTopicMiss() {
     },
   ]);
   const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout,
+    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout
   );
   assert.equal(extracted.topic_matched, false);
   assert.equal(extracted.should_check_event_window, true);
@@ -656,7 +664,7 @@ function testCandidateExtractionFiltersToCurrentNoteWindow() {
     },
   ]);
   const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout,
+    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout
   );
   assert.equal(extracted.previous_note_index, 1);
   assert.equal(extracted.current_note_index, 3);
@@ -698,11 +706,11 @@ function testCandidateSelectionModes() {
           "--selection",
           "auto",
           "--strategy",
-          "oldest",
-        ),
-      ).stdout,
+          "oldest"
+        )
+      ).stdout
     ).selected_candidate_ids,
-    ["first"],
+    ["first"]
   );
   assert.deepEqual(
     JSON.parse(
@@ -713,11 +721,11 @@ function testCandidateSelectionModes() {
           "--selection",
           "auto",
           "--strategy",
-          "newest",
-        ),
-      ).stdout,
+          "newest"
+        )
+      ).stdout
     ).selected_candidate_ids,
-    ["third"],
+    ["third"]
   );
   assert.deepEqual(
     JSON.parse(
@@ -728,11 +736,11 @@ function testCandidateSelectionModes() {
           "--selection",
           "auto",
           "--strategy",
-          "priority",
-        ),
-      ).stdout,
+          "priority"
+        )
+      ).stdout
     ).selected_candidate_ids,
-    ["second"],
+    ["second"]
   );
   const pick = JSON.parse(
     run(
@@ -742,17 +750,17 @@ function testCandidateSelectionModes() {
         "--selection",
         "pick",
         "--max-options",
-        "2",
-      ),
-    ).stdout,
+        "2"
+      )
+    ).stdout
   );
   assert.deepEqual(pick.candidates, []);
   assert.deepEqual(
     pick.pick_options.map((option) => option.candidate_id),
-    ["first", "second"],
+    ["first", "second"]
   );
   const all = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--selection", "all")).stdout,
+    run(nodeCli("candidates", candidatesPath, "--selection", "all")).stdout
   );
   assert.equal(all.experimental, true);
   assert.deepEqual(all.selected_candidate_ids, ["first", "second", "third"]);
@@ -772,8 +780,8 @@ function testMarkCandidatesConsumed() {
       "--ids",
       "a",
       "--note-path",
-      "/tmp/note.md",
-    ),
+      "/tmp/note.md"
+    )
   );
   const records = readJsonl(candidatesPath);
   assert.equal(records[0].status, "consumed");
@@ -796,7 +804,7 @@ function testAnalyzePreservesPendingOnRerun() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeJsonl(eventsPath, [
     {
@@ -857,12 +865,12 @@ function testProjectConfigOverridesGlobal() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeFileSync(
     projectConfigPath,
     JSON.stringify({ candidate_analyzer: { provider: "fake", model: "fake" } }),
-    "utf8",
+    "utf8"
   );
   writeJsonl(eventsPath, [
     {
@@ -898,18 +906,18 @@ function testProjectConfigDeepMergesNestedObjects() {
         fallback: "heuristic",
       },
     }),
-    "utf8",
+    "utf8"
   );
   writeFileSync(
     projectConfigPath,
     JSON.stringify({ candidate_analyzer: { provider: "fake" } }),
-    "utf8",
+    "utf8"
   );
   const merged = JSON.parse(
     run(nodeCli("merge-config"), {
       env: { NOTE_DISTILL_CONFIG: globalConfigPath },
       cwd: dir,
-    }).stdout,
+    }).stdout
   );
   assert.equal(merged.candidate_analyzer.provider, "fake");
   assert.equal(merged.candidate_analyzer.model, "haiku");
@@ -938,7 +946,7 @@ function testAnalyzerLockSkipsWhenFreshLockExists() {
     run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
       env: heuristicConfigEnv(dir),
       cwd: dir,
-    }).stdout,
+    }).stdout
   );
   assert.equal(result.skipped, "locked");
 }
@@ -965,7 +973,7 @@ function testAnalyzerBreaksStaleLockAndProceeds() {
     run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
       env: heuristicConfigEnv(dir),
       cwd: dir,
-    }).stdout,
+    }).stdout
   );
   assert.ok(result.candidates > 0);
   assert.ok(!existsSync(lockPath));
@@ -981,13 +989,13 @@ function testMergeConfigCommand() {
       output_dir: "/tmp/global",
       default_topic: "adr",
     }),
-    "utf8",
+    "utf8"
   );
   const merged = JSON.parse(
     run(nodeCli("merge-config"), {
       env: { NOTE_DISTILL_CONFIG: globalConfigPath },
       cwd: dir,
-    }).stdout,
+    }).stdout
   );
   assert.equal(merged.adapter, "local-markdown");
   assert.equal(merged.output_dir, "/tmp/global");
@@ -1006,7 +1014,7 @@ function testCollectorRedactsSecretKey() {
     }),
   });
   const records = readJsonl(
-    join(dir, "sessions", "secret-key-test", "events.jsonl"),
+    join(dir, "sessions", "secret-key-test", "events.jsonl")
   );
   assert.equal(records.length, 1);
   const prompt = records[0].payload.prompt;
@@ -1039,7 +1047,7 @@ async function testValidatePassesWithAllSections() {
       tags: "[{{domain_tags}}, ai-generated]",
       created: "{{date}}",
     },
-    "# {{title}}\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注",
+    "# {{title}}\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注"
   );
   const note = makeSimpleNote(
     {
@@ -1047,7 +1055,7 @@ async function testValidatePassesWithAllSections() {
       tags: "git, cli, ai-generated",
       created: "2026-05-19",
     },
-    "# 测试笔记\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注",
+    "# 测试笔记\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注"
   );
 
   writeFileSync(tmplPath, template);
@@ -1055,12 +1063,12 @@ async function testValidatePassesWithAllSections() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(
     result.status,
     0,
-    `Expected PASS, got: ${result.stdout}\n${result.stderr}`,
+    `Expected PASS, got: ${result.stdout}\n${result.stderr}`
   );
   assert.match(result.stdout, /PASS/);
 }
@@ -1072,12 +1080,12 @@ async function testValidateFailsOnMissingSection() {
 
   const template = makeTemplate(
     { title: "{{title}}", tags: "[{{domain_tags}}]" },
-    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}",
+    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}"
   );
   // Missing ## 方案
   const note = makeSimpleNote(
     { title: "测试", tags: "git" },
-    "# 测试\n\n## 场景\n\n有场景但没方案",
+    "# 测试\n\n## 场景\n\n有场景但没方案"
   );
 
   writeFileSync(tmplPath, template);
@@ -1085,7 +1093,7 @@ async function testValidateFailsOnMissingSection() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(result.status, 1, `Expected FAIL, got: ${result.stdout}`);
   assert.match(result.stdout, /FAIL/);
@@ -1099,12 +1107,12 @@ async function testValidateOptionalSectionCanBeMissing() {
 
   const template = makeTemplate(
     { title: "{{title}}" },
-    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}\n\n## 备注（可选）\n\n{{notes}}",
+    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}\n\n## 备注（可选）\n\n{{notes}}"
   );
   // Missing optional ## 备注
   const note = makeSimpleNote(
     { title: "测试" },
-    "# 测试\n\n## 场景\n\nxxx\n\n## 方案\n\nyyy",
+    "# 测试\n\n## 场景\n\nxxx\n\n## 方案\n\nyyy"
   );
 
   writeFileSync(tmplPath, template);
@@ -1112,12 +1120,12 @@ async function testValidateOptionalSectionCanBeMissing() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(
     result.status,
     0,
-    `Expected PASS for missing optional section, got: ${result.stdout}`,
+    `Expected PASS for missing optional section, got: ${result.stdout}`
   );
 }
 
@@ -1128,11 +1136,11 @@ async function testValidateUnreplacedVariableInNote() {
 
   const template = makeTemplate(
     { title: "{{title}}" },
-    "# {{title}}\n\n## 场景\n\n{{scenario}}",
+    "# {{title}}\n\n## 场景\n\n{{scenario}}"
   );
   const note = makeSimpleNote(
     { title: "{{title}}" },
-    "# {{title}}\n\n## 场景\n\n场景内容",
+    "# {{title}}\n\n## 场景\n\n场景内容"
   );
 
   writeFileSync(tmplPath, template);
@@ -1140,12 +1148,12 @@ async function testValidateUnreplacedVariableInNote() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(
     result.status,
     1,
-    `Expected FAIL for unreplaced variable, got: ${result.stdout}`,
+    `Expected FAIL for unreplaced variable, got: ${result.stdout}`
   );
   assert.match(result.stdout, /未替换/);
 }
@@ -1159,12 +1167,12 @@ async function testValidateTilTitlePrefixNoLongerEnforced() {
 
   const template = makeTemplate(
     { title: "TIL: {{title}}", tags: "[til, {{domain_tags}}]", style: "til" },
-    "# TIL: {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 怎么做\n\n{{solution}}",
+    "# TIL: {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 怎么做\n\n{{solution}}"
   );
   // Title without TIL: prefix — validator no longer enforces this; template handles it
   const note = makeSimpleNote(
     { title: "git stash 保存部分文件", tags: "til, git", style: "til" },
-    "# git stash 保存部分文件\n\n## 场景\n\n需要只暂存部分文件\n\n## 怎么做\n\ngit stash push -p",
+    "# git stash 保存部分文件\n\n## 场景\n\n需要只暂存部分文件\n\n## 怎么做\n\ngit stash push -p"
   );
 
   writeFileSync(tmplPath, template);
@@ -1172,13 +1180,13 @@ async function testValidateTilTitlePrefixNoLongerEnforced() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   // Should PASS — style-specific constraints have been removed from the validator
   assert.equal(
     result.status,
     0,
-    `Expected PASS (style constraints removed), got: ${result.stdout}`,
+    `Expected PASS (style constraints removed), got: ${result.stdout}`
   );
 }
 
@@ -1192,7 +1200,7 @@ async function testValidateNoteFileMissing() {
       "--template",
       "/nonexistent/tmpl.md",
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(result.status, 1);
 }
@@ -1211,7 +1219,7 @@ async function testValidateTemplateFileMissing() {
       "--template",
       "/nonexistent/tmpl.md",
     ],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(result.status, 1);
   assert.match(result.stderr, /模板文件不存在/);
@@ -1224,11 +1232,11 @@ async function testValidateCodeBlockWithoutLanguage() {
 
   const template = makeTemplate(
     { title: "{{title}}" },
-    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}",
+    "# {{title}}\n\n## 场景\n\n{{scenario}}\n\n## 方案\n\n{{solution}}"
   );
   const note = makeSimpleNote(
     { title: "测试" },
-    "# 测试\n\n## 场景\n\nxxx\n\n## 方案\n\n```\necho hello\n```",
+    "# 测试\n\n## 场景\n\nxxx\n\n## 方案\n\n```\necho hello\n```"
   );
 
   writeFileSync(tmplPath, template);
@@ -1236,12 +1244,12 @@ async function testValidateCodeBlockWithoutLanguage() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(
     result.status,
     0,
-    "Code block without language is only a WARN, should pass",
+    "Code block without language is only a WARN, should pass"
   );
   assert.match(result.stdout, /WARN/);
   assert.match(result.stdout, /language/);
@@ -1254,7 +1262,7 @@ async function testValidateMissingFrontmatter() {
 
   const template = makeTemplate(
     { title: "{{title}}", created: "{{date}}" },
-    "# {{title}}\n\n## 场景\n\n{{scenario}}",
+    "# {{title}}\n\n## 场景\n\n{{scenario}}"
   );
   const note = "# 测试\n\n## 场景\n\nxxx";
 
@@ -1263,10 +1271,164 @@ async function testValidateMissingFrontmatter() {
   const result = spawnSync(
     process.execPath,
     ["--experimental-strip-types", VALIDATE, notePath, "--template", tmplPath],
-    { encoding: "utf8" },
+    { encoding: "utf8" }
   );
   assert.equal(result.status, 1);
   assert.match(result.stdout, /缺少/);
+}
+
+// ---- find-session tests ----
+
+function testFindSessionReturnsMatchingSession() {
+  const dir = tempDir();
+  const sessionDir1 = join(dir, "sessions", "abc123def456");
+  const sessionDir2 = join(dir, "sessions", "789ghi012");
+  mkdirSync(sessionDir1, { recursive: true });
+  mkdirSync(sessionDir2, { recursive: true });
+  // Session 1: CodeBuddy, older
+  writeJsonl(join(sessionDir1, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "abc123def456",
+      timestamp: "2026-06-01T10:00:00.000Z",
+      cwd: "/Users/test/my-project",
+      transcript_path:
+        "/Users/test/Library/Application Support/CodeBuddyExtension/Data/x/CodeBuddyIDE/x/history/y/abc123def456/index.json",
+      payload: { prompt: "hello" },
+    },
+  ]);
+  // Session 2: Claude Code, newer, same cwd
+  writeJsonl(join(sessionDir2, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "789ghi012",
+      timestamp: "2026-06-08T10:00:00.000Z",
+      cwd: "/Users/test/my-project",
+      transcript_path:
+        "/Users/test/.claude/projects/-Users-test-my-project/789ghi012.jsonl",
+      payload: { prompt: "hello" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.session_id, "789ghi012");
+  assert.equal(result.platform, "claude-code");
+  assert.equal(result.cwd, "/Users/test/my-project");
+}
+
+function testFindSessionDetectsCodeBuddyPlatform() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "cb987654");
+  mkdirSync(sessionDir, { recursive: true });
+  writeJsonl(join(sessionDir, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "cb987654",
+      timestamp: "2026-06-08T10:00:00.000Z",
+      cwd: "/Users/test/wiki",
+      transcript_path:
+        "/Users/test/Library/Application Support/CodeBuddyExtension/Data/x/CodeBuddyIDE/x/history/y/cb987654/index.json",
+      payload: { prompt: "hello" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(nodeCli("find-session", "--cwd", "/Users/test/wiki"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.session_id, "cb987654");
+  assert.equal(result.platform, "codebuddy");
+}
+
+function testFindSessionDetectsCodeBuddyOldFormat() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "old-cb-format");
+  mkdirSync(sessionDir, { recursive: true });
+  writeJsonl(join(sessionDir, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "old-cb-format",
+      timestamp: "2026-05-18T06:48:32.285Z",
+      cwd: "/Users/test/photo-skills",
+      transcript_path:
+        "/Users/test/.codebuddy/projects/Users-test-photo-skills/old-cb-format.jsonl",
+      payload: { prompt: "hello" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(nodeCli("find-session", "--cwd", "/Users/test/photo-skills"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.session_id, "old-cb-format");
+  assert.equal(result.platform, "codebuddy");
+}
+
+function testFindSessionReturnsNullWhenNoMatch() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "nomatch");
+  mkdirSync(sessionDir, { recursive: true });
+  writeJsonl(join(sessionDir, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "nomatch",
+      timestamp: "2026-06-08T10:00:00.000Z",
+      cwd: "/Users/test/other-project",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { prompt: "hello" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.session_id, "unknown");
+  assert.equal(result.platform, "unknown");
+}
+
+function testFindSessionReturnsNewestMatch() {
+  const dir = tempDir();
+  const sessionDir1 = join(dir, "sessions", "older-session");
+  const sessionDir2 = join(dir, "sessions", "newer-session");
+  mkdirSync(sessionDir1, { recursive: true });
+  mkdirSync(sessionDir2, { recursive: true });
+  writeJsonl(join(sessionDir1, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "older-session",
+      timestamp: "2026-06-01T10:00:00.000Z",
+      cwd: "/Users/test/my-project",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { prompt: "old" },
+    },
+  ]);
+  writeJsonl(join(sessionDir2, "events.jsonl"), [
+    {
+      schema: 1,
+      event: "UserPromptSubmit",
+      session_id: "newer-session",
+      timestamp: "2026-06-08T10:00:00.000Z",
+      cwd: "/Users/test/my-project",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { prompt: "new" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.session_id, "newer-session");
 }
 
 const tests = [
@@ -1305,6 +1467,11 @@ const tests = [
   testValidateTemplateFileMissing,
   testValidateCodeBlockWithoutLanguage,
   testValidateMissingFrontmatter,
+  testFindSessionReturnsMatchingSession,
+  testFindSessionDetectsCodeBuddyPlatform,
+  testFindSessionDetectsCodeBuddyOldFormat,
+  testFindSessionReturnsNullWhenNoMatch,
+  testFindSessionReturnsNewestMatch,
 ];
 
 for (const test of tests) {

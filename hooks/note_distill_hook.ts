@@ -6,6 +6,7 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readdirSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -17,10 +18,10 @@ import { fileURLToPath } from "node:url";
 
 const SCHEMA_VERSION = 1;
 const DATA_HOME = expandHome(
-  process.env.NOTE_DISTILL_DATA_DIR || "~/.local/share/note-distill",
+  process.env.NOTE_DISTILL_DATA_DIR || "~/.local/share/note-distill"
 );
 const CONFIG_PATH = expandHome(
-  process.env.NOTE_DISTILL_CONFIG || "~/.config/note-distill/config.json",
+  process.env.NOTE_DISTILL_CONFIG || "~/.config/note-distill/config.json"
 );
 const LOCK_TIMEOUT_MS =
   Number(process.env.NOTE_DISTILL_ANALYZER_LOCK_TIMEOUT_MS) || 60_000;
@@ -144,6 +145,28 @@ function loadJsonl(path: string): JsonObject[] {
     .map((line) => JSON.parse(line));
 }
 
+function readFirstEvent(path: string): JsonObject | null {
+  if (!existsSync(path)) return null;
+  try {
+    const content = readFileSync(path, "utf8");
+    const firstLine = content.split("\n").find((line) => line.trim());
+    return firstLine ? JSON.parse(firstLine) : null;
+  } catch {
+    return null;
+  }
+}
+
+function detectPlatform(transcriptPath: string): string {
+  if (!transcriptPath) return "unknown";
+  if (transcriptPath.includes(".claude/")) return "claude-code";
+  if (
+    transcriptPath.includes("CodeBuddyExtension") ||
+    transcriptPath.includes(".codebuddy/")
+  )
+    return "codebuddy";
+  return "unknown";
+}
+
 function writeJsonl(path: string, records: JsonObject[]): void {
   mkdirSync(dirname(path), { recursive: true });
   const tempPath = `${path}.tmp`;
@@ -151,7 +174,7 @@ function writeJsonl(path: string, records: JsonObject[]): void {
     tempPath,
     records.map((record) => JSON.stringify(record)).join("\n") +
       (records.length ? "\n" : ""),
-    "utf8",
+    "utf8"
   );
   renameSync(tempPath, path);
 }
@@ -171,7 +194,7 @@ function redact(value: unknown): string {
   for (const pattern of SECRET_PATTERNS) {
     redacted = redacted.replace(pattern, (match) => {
       const key = match.match(
-        /^(\s*)(password|passwd|pwd|token|api[_-]?key|secret[_-]?key|secret)/i,
+        /^(\s*)(password|passwd|pwd|token|api[_-]?key|secret[_-]?key|secret)/i
       );
       if (key) return `${key[1]}${key[2]}=[REDACTED]`;
       return "Bearer [REDACTED]";
@@ -231,7 +254,7 @@ function maybeStartAnalyzer(record: JsonObject, eventsPath: string): void {
     {
       detached: true,
       stdio: "ignore",
-    },
+    }
   );
   child.on("error", (err) => {
     logError(`analyzer spawn failed: ${err.message}`);
@@ -253,7 +276,7 @@ async function commandCollect(): Promise<number> {
     } catch {}
   }
   process.stdout.write(
-    JSON.stringify({ continue: true, suppressOutput: true }) + "\n",
+    JSON.stringify({ continue: true, suppressOutput: true }) + "\n"
   );
   return 0;
 }
@@ -280,7 +303,7 @@ function isNotePrompt(event: JsonObject): boolean {
 }
 
 function currentNoteWindow(
-  events: JsonObject[],
+  events: JsonObject[]
 ): [number | null, number | null] {
   const noteIndices = events
     .map((event, index) => (isNotePrompt(event) ? index : -1))
@@ -313,7 +336,7 @@ function currentNoteWindow(
 function detectCoverage(events: JsonObject[]): "empty" | "partial" | "full" {
   if (!events.length) return "empty";
   const firstUserPrompt = events.find(
-    (event) => event.event === "UserPromptSubmit",
+    (event) => event.event === "UserPromptSubmit"
   );
   if (!firstUserPrompt) return "empty";
   return promptFor(firstUserPrompt).trimStart().startsWith("/note")
@@ -356,7 +379,7 @@ function commandWindow(args: string[]): number {
   if (!eventsPath) return usage("window <events.jsonl>");
   process.stdout.write(
     JSON.stringify(extractWindow(loadJsonl(resolve(eventsPath))), null, 2) +
-      "\n",
+      "\n"
   );
   return 0;
 }
@@ -383,7 +406,7 @@ function candidateId(sessionId: string, prompt: string, index: number): string {
 
 function buildHeuristicCandidates(
   events: JsonObject[],
-  eventsPath?: string,
+  eventsPath?: string
 ): JsonObject[] {
   const candidates: JsonObject[] = [];
   events.forEach((event, index) => {
@@ -396,13 +419,13 @@ function buildHeuristicCandidates(
       (candidate, candidateIndex) =>
         candidateIndex > index &&
         candidate.event === "Stop" &&
-        assistantFor(candidate),
+        assistantFor(candidate)
     );
     const followingStop =
       followingStopIndex >= 0 ? events[followingStopIndex] : null;
     const answer = followingStop ? assistantFor(followingStop) : "";
     const sessionId = String(
-      event.session_id || followingStop?.session_id || "unknown",
+      event.session_id || followingStop?.session_id || "unknown"
     );
     const evidence = answer ? [prompt, answer] : [prompt];
     const sourceRefs = eventsPath
@@ -439,16 +462,16 @@ function buildHeuristicCandidates(
 
 function buildFakeCandidates(
   events: JsonObject[],
-  eventsPath?: string,
+  eventsPath?: string
 ): JsonObject[] {
   const userIndex = events.findIndex(
     (event) =>
       event.event === "UserPromptSubmit" &&
-      !promptFor(event).trimStart().startsWith("/note"),
+      !promptFor(event).trimStart().startsWith("/note")
   );
   if (userIndex < 0) return [];
   const stopIndex = events.findIndex(
-    (event, index) => index > userIndex && event.event === "Stop",
+    (event, index) => index > userIndex && event.event === "Stop"
   );
   const prompt = promptFor(events[userIndex]);
   const answer = stopIndex >= 0 ? assistantFor(events[stopIndex]) : "";
@@ -458,7 +481,7 @@ function buildFakeCandidates(
       candidate_id: candidateId(
         String(events[userIndex].session_id || "fake"),
         prompt,
-        userIndex,
+        userIndex
       ),
       session_id: String(events[userIndex].session_id || "fake"),
       created_at: utcNow(),
@@ -504,7 +527,7 @@ function normalizeModelCandidates(
   events: JsonObject[],
   eventsPath?: string,
   provider = "model",
-  model = "",
+  model = ""
 ): JsonObject[] {
   return rawCandidates.map((candidate, index) => {
     const range =
@@ -520,17 +543,17 @@ function normalizeModelCandidates(
     const sourceEvent = events[startIndex] || {};
     const stopEvent = events[endIndex] || sourceEvent;
     const title = String(
-      candidate.title || candidate.claim || "Untitled note candidate",
+      candidate.title || candidate.claim || "Untitled note candidate"
     );
     return {
       schema: SCHEMA_VERSION,
       candidate_id: candidateId(
         String(sourceEvent.session_id || stopEvent.session_id || provider),
         title,
-        index,
+        index
       ),
       session_id: String(
-        sourceEvent.session_id || stopEvent.session_id || "unknown",
+        sourceEvent.session_id || stopEvent.session_id || "unknown"
       ),
       created_at: utcNow(),
       range: { prompt_event_index: startIndex, stop_event_index: endIndex },
@@ -540,7 +563,7 @@ function normalizeModelCandidates(
       claim: String(candidate.claim || candidate.summary || title),
       why: String(
         candidate.why ||
-          "model analyzer selected this as reusable technical knowledge",
+          "model analyzer selected this as reusable technical knowledge"
       ),
       confidence: String(candidate.confidence || "medium"),
       evidence: [String(candidate.summary || candidate.claim || title)],
@@ -567,7 +590,7 @@ function parseModelCandidates(
   events: JsonObject[],
   eventsPath?: string,
   provider = "model",
-  model = "",
+  model = ""
 ): JsonObject[] {
   const parsed = JSON.parse(stdout);
   const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
@@ -576,7 +599,7 @@ function parseModelCandidates(
     events,
     eventsPath,
     provider,
-    model,
+    model
   );
 }
 
@@ -594,7 +617,7 @@ function findClaudeExecutable(): string | null {
 function buildClaudeCandidates(
   events: JsonObject[],
   eventsPath: string | undefined,
-  config: JsonObject,
+  config: JsonObject
 ): JsonObject[] {
   const claude = findClaudeExecutable();
   if (!claude) {
@@ -623,7 +646,7 @@ function buildClaudeCandidates(
         events,
         eventsPath,
         "claude",
-        String(config.model || ""),
+        String(config.model || "")
       );
     } catch {
       // fall through to fallback
@@ -644,7 +667,7 @@ function buildClaudeCandidates(
 function buildModelCandidates(
   events: JsonObject[],
   eventsPath: string | undefined,
-  config: JsonObject,
+  config: JsonObject
 ): JsonObject[] {
   if (config.provider === "fake")
     return buildFakeCandidates(events, eventsPath);
@@ -688,7 +711,7 @@ function commandAnalyze(args: string[]): number {
           candidates: 0,
           output: outputPath,
           skipped: "locked",
-        }) + "\n",
+        }) + "\n"
       );
       return 0;
     }
@@ -706,7 +729,7 @@ function commandAnalyze(args: string[]): number {
           candidates: 0,
           output: outputPath,
           skipped: "locked",
-        }) + "\n",
+        }) + "\n"
       );
       return 0;
     }
@@ -715,11 +738,11 @@ function commandAnalyze(args: string[]): number {
     const candidates = buildModelCandidates(
       loadJsonl(resolvedEventsPath),
       resolvedEventsPath,
-      analyzerConfig(),
+      analyzerConfig()
     );
     if (existsSync(resolvedOutput)) {
       const existingById = new Map(
-        loadJsonl(resolvedOutput).map((c) => [String(c.candidate_id), c]),
+        loadJsonl(resolvedOutput).map((c) => [String(c.candidate_id), c])
       );
       const newIds = new Set(candidates.map((c) => String(c.candidate_id)));
       for (const c of candidates) {
@@ -748,7 +771,7 @@ function commandAnalyze(args: string[]): number {
     writeJsonl(resolvedOutput, candidates);
     process.stdout.write(
       JSON.stringify({ candidates: candidates.length, output: outputPath }) +
-        "\n",
+        "\n"
     );
     return 0;
   } finally {
@@ -766,7 +789,7 @@ function candidatePromptIndex(candidate: JsonObject): number | null {
 function inWindow(
   candidate: JsonObject,
   previousNote: number | null,
-  currentNote: number | null,
+  currentNote: number | null
 ): boolean {
   if (currentNote === null) return true;
   const promptIndex = candidatePromptIndex(candidate);
@@ -802,25 +825,25 @@ function pendingCandidates(
   candidates: JsonObject[],
   previousNote: number | null,
   currentNote: number | null,
-  topic?: string,
+  topic?: string
 ): JsonObject[] {
   return candidates.filter(
     (candidate) =>
       candidate.status !== "consumed" &&
       candidate.status !== "dismissed" &&
       inWindow(candidate, previousNote, currentNote) &&
-      topicMatches(candidate, topic),
+      topicMatches(candidate, topic)
   );
 }
 
 function sortCandidates(
   candidates: JsonObject[],
-  strategy: string,
+  strategy: string
 ): JsonObject[] {
   if (strategy === "newest")
     return [...candidates].sort(
       (a, b) =>
-        (candidatePromptIndex(b) ?? -1) - (candidatePromptIndex(a) ?? -1),
+        (candidatePromptIndex(b) ?? -1) - (candidatePromptIndex(a) ?? -1)
     );
   if (strategy === "priority") {
     return [...candidates].sort((a, b) => {
@@ -833,7 +856,7 @@ function sortCandidates(
   return [...candidates].sort(
     (a, b) =>
       (candidatePromptIndex(a) ?? Number.MAX_SAFE_INTEGER) -
-      (candidatePromptIndex(b) ?? Number.MAX_SAFE_INTEGER),
+      (candidatePromptIndex(b) ?? Number.MAX_SAFE_INTEGER)
   );
 }
 
@@ -849,7 +872,7 @@ function selectCandidates(
   candidates: JsonObject[],
   selection: string,
   strategy: string,
-  maxOptions: number,
+  maxOptions: number
 ): JsonObject {
   const ordered = sortCandidates(candidates, strategy);
   if (selection === "pick") {
@@ -889,7 +912,7 @@ function commandParseModelOutput(args: string[]): number {
   const outputPath = parsed.positionals[0];
   if (!outputPath || !parsed.options.events)
     return usage(
-      "parse-model-output <model-output.json> --events <events.jsonl> [--provider <name>] [--model <name>]",
+      "parse-model-output <model-output.json> --events <events.jsonl> [--provider <name>] [--model <name>]"
     );
   const stdout = readFileSync(resolve(outputPath), "utf8");
   const eventsPath = resolve(parsed.options.events);
@@ -898,7 +921,7 @@ function commandParseModelOutput(args: string[]): number {
     loadJsonl(eventsPath),
     eventsPath,
     parsed.options.provider || "model",
-    parsed.options.model || "",
+    parsed.options.model || ""
   );
   process.stdout.write(JSON.stringify({ candidates }, null, 2) + "\n");
   return 0;
@@ -915,7 +938,7 @@ function commandCandidates(args: string[]): number {
   const candidatePath = parsed.positionals[0];
   if (!candidatePath)
     return usage(
-      "candidates <note_candidates.jsonl> [--events <events.jsonl>] [--topic <topic>] [--selection auto|pick|all] [--strategy oldest|newest|priority] [--max-options <n>]",
+      "candidates <note_candidates.jsonl> [--events <events.jsonl>] [--topic <topic>] [--selection auto|pick|all] [--strategy oldest|newest|priority] [--max-options <n>]"
     );
   const events = parsed.options.events
     ? loadJsonl(resolve(parsed.options.events))
@@ -926,13 +949,13 @@ function commandCandidates(args: string[]): number {
     loadJsonl(resolve(candidatePath)),
     previousNote,
     currentNote,
-    parsed.options.topic,
+    parsed.options.topic
   );
   const selection = parsed.options.selection || "auto";
   const strategy = parsed.options.strategy || "oldest";
   const maxOptions = Math.max(
     1,
-    Number.parseInt(parsed.options["max-options"] || "5", 10) || 5,
+    Number.parseInt(parsed.options["max-options"] || "5", 10) || 5
   );
   const selected = selectCandidates(filtered, selection, strategy, maxOptions);
   const result = {
@@ -957,7 +980,7 @@ function commandCandidates(args: string[]): number {
 function markConsumed(
   records: JsonObject[],
   ids: Set<string>,
-  notePath: string,
+  notePath: string
 ): number {
   const consumedAt = utcNow();
   let changed = 0;
@@ -996,8 +1019,8 @@ function commandContext(args: string[]): number {
     JSON.stringify(
       { candidate_id: candidate.candidate_id || null, contexts },
       null,
-      2,
-    ) + "\n",
+      2
+    ) + "\n"
   );
   return 0;
 }
@@ -1007,26 +1030,26 @@ function commandMarkConsumed(args: string[]): number {
   const candidatePath = parsed.positionals[0];
   if (!candidatePath || !parsed.options.ids || !parsed.options["note-path"])
     return usage(
-      "mark-consumed <note_candidates.jsonl> --ids <ids> --note-path <path>",
+      "mark-consumed <note_candidates.jsonl> --ids <ids> --note-path <path>"
     );
   const records = loadJsonl(resolve(candidatePath));
   const ids = new Set(
     parsed.options.ids
       .split(",")
       .map((id) => id.trim())
-      .filter(Boolean),
+      .filter(Boolean)
   );
   const changed = markConsumed(records, ids, parsed.options["note-path"]);
   writeJsonl(resolve(candidatePath), records);
   process.stdout.write(
-    JSON.stringify({ changed, candidate_log_path: candidatePath }) + "\n",
+    JSON.stringify({ changed, candidate_log_path: candidatePath }) + "\n"
   );
   return 0;
 }
 
 function parseOptions(
   args: string[],
-  optionNames: string[],
+  optionNames: string[]
 ): { positionals: string[]; options: Record<string, string> } {
   const options: Record<string, string> = {};
   const positionals: string[] = [];
@@ -1052,6 +1075,56 @@ function commandMergeConfig(): number {
   return 0;
 }
 
+function commandFindSession(args: string[]): number {
+  const parsed = parseOptions(args, ["cwd"]);
+  const targetCwd = parsed.options.cwd;
+  if (!targetCwd) return usage("find-session --cwd <path>");
+  const normalizedTarget = resolve(targetCwd).replace(/\/+$/, "");
+
+  const sessionsDir = join(DATA_HOME, "sessions");
+  if (!existsSync(sessionsDir)) {
+    process.stdout.write(
+      JSON.stringify({ session_id: "unknown", platform: "unknown" }) + "\n"
+    );
+    return 0;
+  }
+
+  const entries = readdirSync(sessionsDir);
+  let bestMatch: {
+    session_id: string;
+    platform: string;
+    cwd: string;
+    timestamp: string;
+  } | null = null;
+
+  for (const entry of entries) {
+    const eventsPath = join(sessionsDir, entry, "events.jsonl");
+    const first = readFirstEvent(eventsPath);
+    if (!first) continue;
+    const eventCwd = resolve(String(first.cwd || "")).replace(/\/+$/, "");
+    if (eventCwd !== normalizedTarget) continue;
+    const timestamp = String(first.timestamp || "");
+    // ISO 8601 timestamps sort lexicographically == chronologically
+    if (!bestMatch || timestamp > bestMatch.timestamp) {
+      bestMatch = {
+        session_id: String(first.session_id || entry),
+        platform: detectPlatform(String(first.transcript_path || "")),
+        cwd: String(first.cwd || ""),
+        timestamp,
+      };
+    }
+  }
+
+  if (bestMatch) {
+    process.stdout.write(JSON.stringify(bestMatch, null, 2) + "\n");
+  } else {
+    process.stdout.write(
+      JSON.stringify({ session_id: "unknown", platform: "unknown" }) + "\n"
+    );
+  }
+  return 0;
+}
+
 function usage(message: string): number {
   process.stderr.write(`usage: note_distill_hook.ts ${message}\n`);
   return 2;
@@ -1067,8 +1140,9 @@ async function main(): Promise<number> {
   if (command === "context") return commandContext(args);
   if (command === "mark-consumed") return commandMarkConsumed(args);
   if (command === "merge-config") return commandMergeConfig();
+  if (command === "find-session") return commandFindSession(args);
   return usage(
-    "collect|analyze|window|candidates|parse-model-output|context|mark-consumed|merge-config",
+    "collect|analyze|window|candidates|parse-model-output|context|mark-consumed|merge-config|find-session"
   );
 }
 
