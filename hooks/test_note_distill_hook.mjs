@@ -1045,7 +1045,7 @@ async function testValidatePassesWithAllSections() {
     {
       title: "{{title}}",
       tags: "[{{domain_tags}}, ai-generated]",
-      created: "{{date}}",
+      created: "{{datetime}}",
     },
     "# {{title}}\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注"
   );
@@ -1053,7 +1053,7 @@ async function testValidatePassesWithAllSections() {
     {
       title: "测试笔记",
       tags: "git, cli, ai-generated",
-      created: "2026-05-19",
+      created: "2026-05-19 14:30:00",
     },
     "# 测试笔记\n\n## 场景\n\n测试场景内容\n\n## 方案\n\n测试方案内容\n\n## 备注\n\n可选备注"
   );
@@ -1261,7 +1261,7 @@ async function testValidateMissingFrontmatter() {
   const notePath = join(tmp, "note.md");
 
   const template = makeTemplate(
-    { title: "{{title}}", created: "{{date}}" },
+    { title: "{{title}}", created: "{{datetime}}" },
     "# {{title}}\n\n## 场景\n\n{{scenario}}"
   );
   const note = "# 测试\n\n## 场景\n\nxxx";

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `{{date}}` 模板变量重命名为 `{{datetime}}`，frontmatter 中 `created`/`updated` 格式从 `YYYY-MM-DD` 改为 `YYYY-MM-DD HH:MM:SS`。移除 `date +%Y-%m-%d` 等平台特定命令硬编码，改为平台无关获取方式。输出文件名中的 `{date}` 仍为 `YYYY-MM-DD`。
+
 ### Added
 - Hook coverage detection: `window` and `candidates` commands now report a `coverage` field (`full` / `partial` / `empty`) so the main agent can decide between primary and fallback paths reliably. `partial` is triggered when the first `UserPromptSubmit` in `events.jsonl` is already a `/note` invocation — meaning the hook joined mid-session (typically: user had a long conversation before installing the plugin) and the captured fragment is not a trustworthy representation of session content.
 - Fallback path is now actively taken on `coverage=partial`, not just `coverage=empty`. Main agent forces `NOTE_CANDIDATES` / `NOTE_EVENT_WINDOW` to `unavailable` to prevent the subagent from mistaking the partial fragment for the full picture. Subagent reads the main session history directly (requires `CLAUDE_CODE_FORK_SUBAGENT=1`).

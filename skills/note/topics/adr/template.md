@@ -1,8 +1,8 @@
 ---
 title: "{{title}}"
 type: adr
-created: {{date}}
-updated: {{date}}
+created: {{datetime}}
+updated: {{datetime}}
 status: proposed
 deciders: []
 consulted: []

@@ -113,7 +113,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
    读 prompt.md（领域判断 + 写作要求）和 template.md（输出骨架）
 4. 按 protocol §1 识别内容范围，以 prompt.md 的标准判断是否值得记录
 5. 填充 template.md 中的所有 {{variable}}，不得保留未替换的占位符。
-   {{date}} = `date +%Y-%m-%d` 输出；{{slug}} = 英文小写连字符 ≤50 字符；{{domain_tags}} ≤4 个
+   {{datetime}} = 当前时间，格式 `YYYY-MM-DD HH:MM:SS`（通过 shell 命令或运行时 API 获取）；{{slug}} = 英文小写连字符 ≤50 字符；{{domain_tags}} ≤4 个
 6. 校验：`node --experimental-strip-types {SKILL_DIR}/../../hooks/validate-note.ts <note> --template <tpl>`
    FAIL 则修改重试 ≤3 轮
 7. 写入：按 protocol §4 的写入规范

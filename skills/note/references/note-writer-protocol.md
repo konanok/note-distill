@@ -89,7 +89,7 @@ PASS → 继续。WARN → 自行判断。FAIL → 修改重试 ≤3 轮。
 
 ## 4. 写入
 
-**输出路径**：`<OUTPUT_DIR>/{date}-{slug}.md`。OUTPUT_DIR：adapter=obsidian → `obsidian_vault_path`；否则 → `output_dir`。`{date}` 由 `date +%Y-%m-%d` 获取，`{slug}` 从标题提取（英文小写连字符 ≤50 字符）。
+**输出路径**：`<OUTPUT_DIR>/{date}-{slug}.md`。OUTPUT_DIR：adapter=obsidian → `obsidian_vault_path`；否则 → `output_dir`。`{date}` 为日期部分 `YYYY-MM-DD`（通过 shell 命令或运行时 API 获取），`{slug}` 从标题提取（英文小写连字符 ≤50 字符）。
 
 **链接风格**：adapter=obsidian → `[[概念名]]` wikilink（3-8 个/篇）；否则 → 标准 Markdown `[text](url)`。
 

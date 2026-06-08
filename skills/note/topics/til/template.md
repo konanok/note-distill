@@ -4,8 +4,8 @@ type: til
 tags: [til, {{domain_tags}}, ai-generated, TODO]
 ai-generated: true
 reviewed: false
-created: {{date}}
-updated: {{date}}
+created: {{datetime}}
+updated: {{datetime}}
 source: note-distill:{{platform}}:{{session_id}}
 follow-up: []
 ---
