@@ -292,10 +292,41 @@ function currentNoteWindow(
   return [previousIndex, currentIndex];
 }
 
+/**
+ * Determine how well the hook log covers the main session.
+ *
+ * - `empty`   : no events at all → hook completely unavailable.
+ * - `partial` : the first UserPromptSubmit in the log already starts with `/note`,
+ *               meaning the hook only started recording at (or after) the user's
+ *               `/note` invocation. Anything that happened earlier in the session
+ *               was NOT captured, so candidates and the event window built from
+ *               this log are not trustworthy as the sole source of material.
+ * - `full`    : there is at least one non-`/note` UserPromptSubmit before any
+ *               `/note` invocation, so the hook has recorded actual discussion
+ *               history. Candidates / window may still be small, but they are
+ *               trustworthy within their range.
+ *
+ * Note: this is a heuristic — it cannot tell whether the conversation existed
+ * BEFORE the very first UserPromptSubmit in the log. We treat that boundary as
+ * the hook's earliest knowable point and accept that limitation.
+ */
+function detectCoverage(events: JsonObject[]): "empty" | "partial" | "full" {
+  if (!events.length) return "empty";
+  const firstUserPrompt = events.find(
+    (event) => event.event === "UserPromptSubmit",
+  );
+  if (!firstUserPrompt) return "empty";
+  return promptFor(firstUserPrompt).trimStart().startsWith("/note")
+    ? "partial"
+    : "full";
+}
+
 function extractWindow(events: JsonObject[]): JsonObject {
+  const coverage = detectCoverage(events);
   const [previousIndex, currentIndex] = currentNoteWindow(events);
   if (currentIndex === null) {
     return {
+      coverage,
       previous_note: null,
       current_note: null,
       window_start: 0,
@@ -305,6 +336,7 @@ function extractWindow(events: JsonObject[]): JsonObject {
   }
   const windowStart = previousIndex === null ? 0 : previousIndex + 1;
   return {
+    coverage,
     previous_note:
       previousIndex === null
         ? null
@@ -888,6 +920,7 @@ function commandCandidates(args: string[]): number {
   const events = parsed.options.events
     ? loadJsonl(resolve(parsed.options.events))
     : [];
+  const coverage = detectCoverage(events);
   const [previousNote, currentNote] = currentNoteWindow(events);
   const filtered = pendingCandidates(
     loadJsonl(resolve(candidatePath)),
@@ -905,6 +938,7 @@ function commandCandidates(args: string[]): number {
   const result = {
     candidate_log_path: candidatePath,
     event_log_path: parsed.options.events || null,
+    coverage,
     previous_note_index: previousNote,
     current_note_index: currentNote,
     topic: parsed.options.topic || null,

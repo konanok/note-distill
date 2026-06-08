@@ -176,6 +176,61 @@ function testExtractNoteWindow() {
       .map((event) => event.payload.prompt),
     ["新的技术讨论"],
   );
+  // Window built on a log whose first user prompt is a normal discussion
+  // (not /note) means the hook was online when the session began.
+  assert.equal(result.coverage, "full");
+}
+
+function testWindowReportsPartialCoverageWhenHookJoinedMidSession() {
+  // Scenario: user already had a long conversation BEFORE installing the
+  // plugin (or before hooks were enabled). After enabling hooks, the very
+  // first UserPromptSubmit recorded is the `/note` invocation itself. The
+  // hook log is therefore an unreliable representation of session content
+  // and the main agent must fall back to full history.
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      payload: { prompt: "/note 记录一下刚才聊的 NUMA 调度方案" },
+    },
+  ]);
+  const result = JSON.parse(run(nodeCli("window", eventsPath)).stdout);
+  assert.equal(result.coverage, "partial");
+  // Current note is detected, no previous note.
+  assert.equal(result.previous_note, null);
+  assert.equal(
+    result.current_note.prompt,
+    "/note 记录一下刚才聊的 NUMA 调度方案",
+  );
+}
+
+function testWindowReportsEmptyCoverageWhenNoEvents() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  writeFileSync(eventsPath, "", "utf8");
+  const result = JSON.parse(run(nodeCli("window", eventsPath)).stdout);
+  assert.equal(result.coverage, "empty");
+  assert.deepEqual(result.events, []);
+}
+
+function testCandidatesCommandSurfacesCoverage() {
+  // The candidates command should mirror the coverage field so the main
+  // agent can branch on it without making a second `window` call.
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      payload: { prompt: "/note 立刻就 /note 说明 hook 中途接入" },
+    },
+  ]);
+  writeJsonl(candidatesPath, []);
+  const result = JSON.parse(
+    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout,
+  );
+  assert.equal(result.coverage, "partial");
 }
 
 function testAnalyzerAndCandidateExtraction() {
@@ -1219,6 +1274,9 @@ const tests = [
   testCollectorFailOpenOnBadJson,
   testWrapperInvokesCollectorAndAnalyzer,
   testExtractNoteWindow,
+  testWindowReportsPartialCoverageWhenHookJoinedMidSession,
+  testWindowReportsEmptyCoverageWhenNoEvents,
+  testCandidatesCommandSurfacesCoverage,
   testAnalyzerAndCandidateExtraction,
   testContextReadsCandidateSourceRefs,
   testModelJsonParserFixture,

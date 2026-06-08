@@ -27,10 +27,10 @@ note-distill is a Claude Code plugin that forks a background subagent to distill
                                    │ candidates + event window
                                    ▼
 /note-distill:note → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
-      ├── Primary path (candidates or event window available):
+      ├── Primary path (COVERAGE=full AND candidates/window available):
       │   general-purpose subagent (background) — explicit input only, no fork needed
-      └── Fallback path (nothing available):
-          general-purpose subagent (background) — may inherit full history if fork configured
+      └── Fallback path (COVERAGE=empty OR partial):
+          general-purpose subagent (background) — inherits full history via CLAUDE_CODE_FORK_SUBAGENT=1
 
 Subagent flow (both paths):
   1. note-writer-protocol.md → mechanical workflow + bottom-line constraints
@@ -46,7 +46,12 @@ Plugin manifest: `.claude-plugin/plugin.json`
 
 **No-summarization rule**: see "Hard boundaries" above.
 
-**Primary vs fallback**: The hook system (`hooks/`) records session events and produces note candidates via an analyzer. When candidates or event window data is available, the subagent uses that explicit input (primary path, no fork needed). Only when nothing is available does it fall back to inheriting full conversation history (fallback path — requires `CLAUDE_CODE_FORK_SUBAGENT=1`, experimental). Set via `.claude/settings.local.json` `env` field (recommended) or shell profile.
+**Primary vs fallback**: The hook system (`hooks/`) records session events and produces note candidates via an analyzer. The `window` command on `note_distill_hook.ts` reports a `coverage` field on every call:
+- `full` — first UserPromptSubmit in `events.jsonl` is a normal user message (hook was online when the session started). Main agent goes **primary**.
+- `partial` — first UserPromptSubmit is already `/note` (hook only started recording at or after the `/note` invocation; everything earlier is missing). Main agent **forces NOTE_CANDIDATES / NOTE_EVENT_WINDOW to `unavailable`** to prevent the subagent from mistaking the captured fragment for the full picture, and goes **fallback**.
+- `empty` — no events at all. Goes **fallback**.
+
+Fallback path requires `CLAUDE_CODE_FORK_SUBAGENT=1` to inherit the main session history (set via `.claude/settings.local.json` `env` field, recommended, or shell profile). Without it, the subagent reports a structured warning instructing the user how to enable it.
 
 ## Hook-based candidate pipeline
 
@@ -70,8 +75,8 @@ All via `node --experimental-strip-types hooks/note_distill_hook.ts <command>`:
 |---|---|
 | `collect` | Reads hook event from stdin, appends to `events.jsonl`. On Stop, spawns async `analyze`. |
 | `analyze <events.jsonl> [--output <path>]` | Runs analyzer (heuristic / claude / fake) over events, writes candidates. |
-| `window <events.jsonl>` | Extracts the event range between the last two `/note` commands. |
-| `candidates <note_candidates.jsonl> [--events <events.jsonl>] [--topic <text>] [--selection auto\|pick\|all] [--strategy oldest\|newest\|priority]` | Filters pending candidates by window + topic, selects per strategy. |
+| `window <events.jsonl>` | Extracts the event range between the last two `/note` commands. Output includes `coverage: full\|partial\|empty` so the main agent can decide primary vs fallback. |
+| `candidates <note_candidates.jsonl> [--events <events.jsonl>] [--topic <text>] [--selection auto\|pick\|all] [--strategy oldest\|newest\|priority]` | Filters pending candidates by window + topic, selects per strategy. Output also includes `coverage` (mirrors `window`). |
 | `context <candidate.json>` | Reads `source_refs` from a candidate and returns the referenced event range. |
 | `mark-consumed <note_candidates.jsonl> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
 | `parse-model-output <model-output.json> --events <events.jsonl>` | Parses LLM analyzer output into normalized candidates. |

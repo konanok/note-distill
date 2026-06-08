@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Hook coverage detection: `window` and `candidates` commands now report a `coverage` field (`full` / `partial` / `empty`) so the main agent can decide between primary and fallback paths reliably. `partial` is triggered when the first `UserPromptSubmit` in `events.jsonl` is already a `/note` invocation — meaning the hook joined mid-session (typically: user had a long conversation before installing the plugin) and the captured fragment is not a trustworthy representation of session content.
+- Fallback path is now actively taken on `coverage=partial`, not just `coverage=empty`. Main agent forces `NOTE_CANDIDATES` / `NOTE_EVENT_WINDOW` to `unavailable` to prevent the subagent from mistaking the partial fragment for the full picture. Subagent reads the main session history directly (requires `CLAUDE_CODE_FORK_SUBAGENT=1`).
+- Subagent spawn prompt now contains a dedicated **Fallback 模式专用指令** block that activates when `SOURCE_PATH=fallback`: explicit guidance on reading main session history, a structured warning to surface when fork inheritance isn't enabled, and instruction to skip `mark-consumed` (no candidate IDs to mark).
+
 ### Changed
 - **Breaking**: `til` and `adr` template frontmatter aligned with Karpathy-style LLM Wiki schema. Added `type: til|adr` (so wiki tooling recognizes the page type), `updated: {{date}}` (mirrors `created` on first write; wiki lint maintains it afterward), `reviewed: false` (wiki uses this flag for unreviewed AI-generated pages). Removed `topic: til|adr` (redundant with `type`) and dropped `need-human-review` tag (the `TODO` tag plus `reviewed: false` already cover this). `title` values are now quoted for YAML safety. Existing notes without the new fields remain valid for reading; re-run `/note` to regenerate if you want them migrated.
 - **Breaking**: `adr` topic redesigned to align with [MADR 3 short](https://adr.github.io/madr/) standard. New body structure: 背景与问题陈述 / 决策驱动因素 / 备选方案 / 决策结果（含 ### 后果）/ 验证方式 / 各方案利弊. New frontmatter fields: `status` (defaults `proposed`), `deciders`, `consulted`, `informed`.

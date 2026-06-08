@@ -47,7 +47,11 @@
 2. 否则 `NOTE_EVENT_WINDOW` 非 `unavailable` → `primary:event-window`。同上。
 3. 否则 → `fallback:full-history`，按增量范围规则从对话历史确定。
 
-完整对话历史只用于消歧、验证和补充背景，不得重新选择范围外的高价值内容。
+**COVERAGE 与 fallback 触发**：主 agent 在 spawn prompt 中会传入 `COVERAGE` 和 `SOURCE_PATH`：
+- `COVERAGE=full` + `SOURCE_PATH=primary` → 走上方第 1/2 条
+- `COVERAGE=partial`（hook 中途接入）或 `COVERAGE=empty`（hook 未启用/未生效）→ `SOURCE_PATH=fallback`。主 agent 已把 NOTE_CANDIDATES/NOTE_EVENT_WINDOW 强制改写为 `unavailable`，**严禁**绕过去原 events.jsonl 路径自行读取"残缺片段"——那不可信。直接走第 3 条。
+
+完整对话历史只用于消歧、验证和补充背景，不得重新选择范围外的高价值内容。fallback 路径下，"完整对话历史"本身就是主要素材，按增量范围规则界定。
 
 **source_refs**：若 `NOTE_CANDIDATES.candidates[*].source_refs` 存在，可运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts context <candidate-json-path>` 读取局部上下文。
 
