@@ -1,0 +1,13 @@
+{
+  "name": "note-distill",
+  "description": "note-distill 插件市场（仅含 note-distill 一个插件）",
+  "owner": {
+    "name": "konanok"
+  },
+  "plugins": [
+    {
+      "name": "note-distill",
+      "source": "."
+    }
+  ]
+}

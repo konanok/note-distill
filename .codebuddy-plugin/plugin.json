@@ -1,0 +1,9 @@
+{
+  "name": "note-distill",
+  "description": "后台 subagent 把当前对话中的技术方案提炼为结构化笔记，写入配置的知识库。支持模板驱动（til、design、technical），扁平架构，主 session 不被打断。",
+  "version": "0.0.1",
+  "author": {
+    "name": "konanok"
+  },
+  "hooks": "./hooks/hooks.json"
+}

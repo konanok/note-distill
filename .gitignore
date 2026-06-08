@@ -27,3 +27,6 @@ scratch/
 
 # 设计文档含本地路径，暂不入库
 docs/
+
+# CodeBuddy 运行时缓存（含绝对路径）
+.plugins-cache.json
