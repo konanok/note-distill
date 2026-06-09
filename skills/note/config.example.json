@@ -25,6 +25,8 @@
   },
 
   "candidate_analyzer": {
+    "enabled": true,
+    "_enabled_comment": "设为 false 可关闭自动候选词提取（Stop hook 不再 spawn analyzer 子进程），/note 仍可通过对话历史工作",
     "provider": "auto",
     "model": "haiku",
     "fallback": "heuristic"

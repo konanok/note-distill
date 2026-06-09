@@ -1447,18 +1447,13 @@ function testParseModelOutputRepairsTruncatedJson() {
     },
   ]);
   // Simulate truncated JSON: missing closing brackets
-  const truncated = '{"candidates":[{"type":"architecture","title":"微服务拆分","summary":"按领域拆分服务","claim":"降低耦合","why":"独立部署","confidence":"high","event_range":{"start_index":0,"end_index":1}';
+  const truncated =
+    '{"candidates":[{"type":"architecture","title":"微服务拆分","summary":"按领域拆分服务","claim":"降低耦合","why":"独立部署","confidence":"high","event_range":{"start_index":0,"end_index":1}';
   const modelOutput = join(dir, "model-output.json");
   writeFileSync(modelOutput, truncated, "utf8");
   const parsed = JSON.parse(
-    run(
-      nodeCli(
-        "parse-model-output",
-        modelOutput,
-        "--events",
-        eventsPath
-      )
-    ).stdout
+    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
+      .stdout
   );
   assert.equal(parsed.repaired, true);
   assert.equal(parsed.candidates.length, 1);
@@ -1500,14 +1495,8 @@ function testParseModelOutputNoRepairOnValidJson() {
     "utf8"
   );
   const parsed = JSON.parse(
-    run(
-      nodeCli(
-        "parse-model-output",
-        modelOutput,
-        "--events",
-        eventsPath
-      )
-    ).stdout
+    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
+      .stdout
   );
   assert.equal(parsed.repaired, false);
   assert.equal(parsed.candidates.length, 1);
@@ -1528,25 +1517,162 @@ function testParseModelOutputStripsMarkdownCodeBlock() {
       payload: { last_assistant_message: "结论" },
     },
   ]);
-  const wrapped = 'Here is the analysis:\n```json\n{"candidates":[{"type":"bugfix","title":"修复空指针","summary":"加了null检查","claim":"不再崩溃","why":"用户反馈","confidence":"high","event_range":{"start_index":0,"end_index":1}}]}\n```\nDone.';
+  const wrapped =
+    'Here is the analysis:\n```json\n{"candidates":[{"type":"bugfix","title":"修复空指针","summary":"加了null检查","claim":"不再崩溃","why":"用户反馈","confidence":"high","event_range":{"start_index":0,"end_index":1}}]}\n```\nDone.';
   const modelOutput = join(dir, "model-output.json");
   writeFileSync(modelOutput, wrapped, "utf8");
   const parsed = JSON.parse(
-    run(
-      nodeCli(
-        "parse-model-output",
-        modelOutput,
-        "--events",
-        eventsPath
-      )
-    ).stdout
+    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
+      .stdout
   );
   assert.equal(parsed.candidates.length, 1);
   assert.equal(parsed.candidates[0].type, "bugfix");
   assert.equal(parsed.repaired, false);
 }
 
+function testCollectorSkipsWhenAnalyzerChild() {
+  // When NOTE_DISTILL_ANALYZER_CHILD=1, the collector should skip all work
+  // (anti-recursion guard) but still return the standard hook response.
+  const dir = tempDir();
+  const result = run(nodeCli("collect"), {
+    env: {
+      NOTE_DISTILL_DATA_DIR: dir,
+      NOTE_DISTILL_ANALYZER_CHILD: "1",
+    },
+    input: JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "child-guard-test",
+      cwd: "/tmp",
+      transcript_path: "/tmp/transcript.jsonl",
+      prompt: "this should be skipped",
+    }),
+  });
+  // Hook response is normal
+  assert.equal(JSON.parse(result.stdout).continue, true);
+  // No events.jsonl written
+  assert.equal(
+    existsSync(join(dir, "sessions", "child-guard-test", "events.jsonl")),
+    false
+  );
+}
+
+function testAnalyzerDisabledSkipsCandidateExtraction() {
+  // When candidate_analyzer.enabled=false, analyze command should produce
+  // zero candidates regardless of event content.
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  const configPath = join(dir, "config.json");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      session_id: "disabled-test",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { prompt: "这个方案应该用 hook 采集事件窗口" },
+    },
+    {
+      event: "Stop",
+      session_id: "disabled-test",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
+    },
+  ]);
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      candidate_analyzer: {
+        enabled: false,
+        provider: "heuristic",
+        model: "",
+        fallback: "heuristic",
+      },
+    }),
+    "utf8"
+  );
+  const analyzeResult = JSON.parse(
+    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+      env: { NOTE_DISTILL_CONFIG: configPath },
+    }).stdout
+  );
+  assert.equal(analyzeResult.skipped, "disabled");
+  assert.equal(analyzeResult.candidates, 0);
+  // No candidates file written
+  assert.equal(existsSync(candidatesPath), false);
+}
+
+function testMergeConfigIncludesEnabledField() {
+  const dir = tempDir();
+  const globalConfigPath = join(dir, "global-config.json");
+  writeFileSync(
+    globalConfigPath,
+    JSON.stringify({
+      adapter: "local-markdown",
+      output_dir: dir,
+      candidate_analyzer: {
+        enabled: false,
+        provider: "heuristic",
+        model: "",
+        fallback: "heuristic",
+      },
+    }),
+    "utf8"
+  );
+  const merged = JSON.parse(
+    run(nodeCli("merge-config"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(merged.candidate_analyzer.enabled, false);
+}
+
+function testAnalyzerDisabledViaEnvVar() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  const configPath = join(dir, "config.json");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      session_id: "env-disable-test",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { prompt: "这个方案应该用 hook 采集事件窗口" },
+    },
+    {
+      event: "Stop",
+      session_id: "env-disable-test",
+      transcript_path: "/tmp/transcript.jsonl",
+      payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
+    },
+  ]);
+  // Config has enabled=true (default), but env var overrides it
+  writeFileSync(
+    configPath,
+    JSON.stringify({
+      candidate_analyzer: {
+        provider: "heuristic",
+        model: "",
+        fallback: "heuristic",
+      },
+    }),
+    "utf8"
+  );
+  const analyzeResult = JSON.parse(
+    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+      env: {
+        NOTE_DISTILL_CONFIG: configPath,
+        NOTE_DISTILL_ANALYZER_ENABLED: "false",
+      },
+    }).stdout
+  );
+  assert.equal(analyzeResult.skipped, "disabled");
+  assert.equal(analyzeResult.candidates, 0);
+}
+
 const tests = [
+  testCollectorSkipsWhenAnalyzerChild,
+  testAnalyzerDisabledSkipsCandidateExtraction,
+  testAnalyzerDisabledViaEnvVar,
+  testMergeConfigIncludesEnabledField,
   testCollectorRecordsAndRedacts,
   testCollectorFailOpenOnBadJson,
   testWrapperInvokesCollectorAndAnalyzer,

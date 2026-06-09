@@ -14,6 +14,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `findExecutable` now uses `path.delimiter` instead of hardcoded `:` for PATH splitting, improving Windows compatibility.
 
 ### Added
+- Anti-recursion guard: `commandCollect` checks `NOTE_DISTILL_ANALYZER_CHILD=1` env var and skips all work if set, preventing infinite hook→analyzer→hook loops.
+- `maybeStartAnalyzer` and `buildCliCandidates` now inject `NOTE_DISTILL_ANALYZER_CHILD=1` into child process environments so their hook triggers are no-ops.
+- `buildCliCandidates` passes `--bare` flag to `claude` CLI to skip hook loading entirely (Claude Code bare mode).
+- `candidate_analyzer.enabled` config field (default `true`). Set to `false` to disable automatic candidate extraction; `maybeStartAnalyzer` and `commandAnalyze` will skip entirely. Also overridable via `NOTE_DISTILL_ANALYZER_ENABLED` env var.
+- `analyzerConfig()` now returns an `enabled` boolean field.
+- Tests: `testCollectorSkipsWhenAnalyzerChild`, `testAnalyzerDisabledSkipsCandidateExtraction`, `testMergeConfigIncludesEnabledField`.
+
 - `codebuddy` provider: spawns `codebuddy --print` for candidate analysis, mirroring the existing `claude --print` flow.
 - `auto` provider: platform-aware CLI detection — prefers the same-platform CLI (CodeBuddy session → codebuddy CLI first, Claude Code session → claude CLI first), then tries the other CLI, then falls back to heuristic.
 - `CLI_MODEL_MAP`: semantic model name mapping per provider (`haiku`/`sonnet`/`opus` → provider-specific CLI model IDs). CodeBuddy maps `haiku` → `deepseek-v4-flash-ioa`, `sonnet` → `claude-sonnet-4.6`, `opus` → `claude-opus-4.8`.

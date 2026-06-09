@@ -30,3 +30,4 @@ docs/
 
 # CodeBuddy 运行时缓存（含绝对路径）
 .plugins-cache.json
+.codebuddy/teams/

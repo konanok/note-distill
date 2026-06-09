@@ -124,6 +124,15 @@ function analyzerConfig(): JsonObject {
       ? config.candidate_analyzer
       : {};
   return {
+    enabled:
+      analyzer.enabled != null
+        ? String(analyzer.enabled) !== "false" &&
+          String(analyzer.enabled) !== "0" &&
+          String(analyzer.enabled) !== "null"
+        : process.env.NOTE_DISTILL_ANALYZER_ENABLED === "0" ||
+          process.env.NOTE_DISTILL_ANALYZER_ENABLED === "false"
+        ? false
+        : true,
     provider:
       analyzer.provider || process.env.NOTE_DISTILL_ANALYZER_PROVIDER || "auto",
     model: analyzer.model || process.env.NOTE_DISTILL_ANALYZER_MODEL || "haiku",
@@ -234,6 +243,8 @@ function logError(message: string): void {
 
 function maybeStartAnalyzer(record: JsonObject, eventsPath: string): void {
   if (record.event !== "Stop") return;
+  const analyzer = analyzerConfig();
+  if (!analyzer.enabled) return;
   const outputPath = join(dirname(eventsPath), "note_candidates.jsonl");
   const scriptPath = fileURLToPath(import.meta.url);
   const child = spawn(
@@ -249,6 +260,7 @@ function maybeStartAnalyzer(record: JsonObject, eventsPath: string): void {
     {
       detached: true,
       stdio: "ignore",
+      env: { ...process.env, NOTE_DISTILL_ANALYZER_CHILD: "1" },
     }
   );
   child.on("error", (err) => {
@@ -258,6 +270,16 @@ function maybeStartAnalyzer(record: JsonObject, eventsPath: string): void {
 }
 
 async function commandCollect(): Promise<number> {
+  // Anti-recursion: if we're inside an analyzer child process, skip all work
+  if (process.env.NOTE_DISTILL_ANALYZER_CHILD === "1") {
+    logError(
+      "NOTE_DISTILL_ANALYZER_CHILD=1 detected, skipping collection (anti-recursion guard)"
+    );
+    process.stdout.write(
+      JSON.stringify({ continue: true, suppressOutput: true }) + "\n"
+    );
+    return 0;
+  }
   try {
     const raw = await readStdin();
     const event = raw.trim() ? JSON.parse(raw) : {};
@@ -728,12 +750,14 @@ function buildCliCandidates(
   executable: string
 ): JsonObject[] {
   const args = ["--print"];
+  if (provider === "claude") args.push("--bare");
   const modelArg = resolveModel(provider, String(config.model || "haiku"));
   args.push("--model", modelArg);
   const result = spawnSync(executable, args, {
     input: buildAnalyzerPrompt(events),
     encoding: "utf8",
     timeout: 60_000,
+    env: { ...process.env, NOTE_DISTILL_ANALYZER_CHILD: "1" },
   });
   if (result.status === 0) {
     try {
@@ -915,6 +939,13 @@ function buildModelCandidates(
 }
 
 function commandAnalyze(args: string[]): number {
+  const config = analyzerConfig();
+  if (!config.enabled) {
+    process.stdout.write(
+      JSON.stringify({ candidates: 0, skipped: "disabled" }) + "\n"
+    );
+    return 0;
+  }
   const parsed = parseOptions(args, ["output"]);
   const eventsPath = parsed.positionals[0];
   if (!eventsPath) return usage("analyze <events.jsonl> [--output <path>]");
