@@ -7,7 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `design` topic: architecture + design rationale notes, complementing TIL (atomic knowledge) and ADR (decision records with ≥2 alternatives). 6-section template: 概览 → 组件概览 → 组件详述 → 数据流 → 关键设计决策 → 已知约束与未决问题. Supports ADR cross-reference in the key design decisions section.
+
 ### Changed
+- Subagent prompt refactored: main agent no longer injects JSON blobs (NOTE_CANDIDATES, NOTE_EVENT_WINDOW, PLATFORM, SESSION_ID, EVENT_LOG_PATH, CANDIDATE_LOG_PATH). Instead, subagent discovers platform/session/paths itself and runs candidates/window commands to get data. Main agent only injects scalar parameters (TOPIC, TOPIC_HINT, SKILL_DIR, COVERAGE, SOURCE_PATH, SELECTED_CANDIDATE_IDS). This makes spawning more reliable — LLM-based main agents often failed to properly inject large JSON outputs.
+- Path selection expanded from 3-state to 4-state: COVERAGE=`full` without candidates/window now also goes fallback (subagent reads events.jsonl directly), instead of being lumped with the primary path.
+- Removed fork subagent dependency (the `CLAUDE_CODE_FORK_SUBAGENT=1` requirement from the previous fallback mechanism is no longer needed). Fallback path now reads events.jsonl directly (platform-agnostic, no prompt injection required). SKILL.md, CLAUDE.md, and README.md updated accordingly. The "structured warning about fork inheritance" from previous versions is also removed.
+- CodeBuddy Task spawn mechanism now includes `description="写笔记"` parameter.
 - Candidate analyzer default provider changed from `claude` to `auto`. The `auto` provider detects the current platform (Claude Code or CodeBuddy) and prefers the matching CLI for analysis, falling back to the other CLI, then to heuristic.
 - `repairTruncatedJson` now surfaces a `repaired: true` flag on candidate objects when JSON repair was applied, for observability of potentially truncated data.
 - `parse-model-output` command output now includes a `repaired` boolean field indicating whether the input JSON was repaired.
@@ -23,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `codebuddy` provider: spawns `codebuddy --print` for candidate analysis, mirroring the existing `claude --print` flow.
 - `auto` provider: platform-aware CLI detection — prefers the same-platform CLI (CodeBuddy session → codebuddy CLI first, Claude Code session → claude CLI first), then tries the other CLI, then falls back to heuristic.
-- `CLI_MODEL_MAP`: semantic model name mapping per provider (`haiku`/`sonnet`/`opus` → provider-specific CLI model IDs). CodeBuddy maps `haiku` → `deepseek-v4-flash-ioa`, `sonnet` → `claude-sonnet-4.6`, `opus` → `claude-opus-4.8`.
+- `CLI_MODEL_MAP`: semantic model name mapping per provider (`haiku`/`sonnet`/`opus` → provider-specific CLI model IDs). CodeBuddy maps `haiku` → `deepseek-v4-flash-ioa`, `sonnet` → `claude-sonnet-4.7`, `opus` → `claude-opus-4.7`.
 - `stripMarkdownCodeBlock()`: strips ```json code block wrapping from LLM output before parsing.
 - `repairTruncatedJson()`: closes open strings/brackets/braces in truncated LLM JSON output using a nesting stack approach.
 - `buildCliCandidates()` logs stderr when CLI execution fails (status ≠ 0) for easier debugging.

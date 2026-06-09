@@ -33,8 +33,9 @@ description: 诊断 note-distill 配置是否正确
    - `max_pick_options` 若存在，必须是正整数
 
 7. 检查 `candidate_analyzer`（缺失仅提示并使用默认值）：
-   - `provider` 若存在，必须是 `heuristic` / `fake` / `claude`
-   - `model` 可为空；当 `provider=claude` 且为空时提示将使用 `claude-haiku-4-5-20251001`
+   - `enabled` 若存在，必须是布尔值（默认 `true`；设 `false` 关闭自动候选词提取）
+   - `provider` 若存在，必须是 `auto` / `claude` / `codebuddy` / `heuristic` / `fake`
+   - `model` 可为空；默认 `haiku`（语义名，经 CLI_MODEL_MAP 映射为各 provider 的实际 model ID）
    - `fallback` 若存在，必须是 `heuristic` / `none`
 
 8. 权限检查：按 adapter 取目标根目录（`output_dir` 或 `obsidian_vault_path`），

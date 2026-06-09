@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-note-distill is a Claude Code plugin that forks a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. No build step, no linter, no general test framework — but `hooks/test_note_distill_hook.mjs` is a hand-rolled integration test runner for the hook pipeline.
+note-distill is a Claude Code plugin that spawns a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. No build step, no linter, no general test framework — but `hooks/test_note_distill_hook.mjs` is a hand-rolled integration test runner for the hook pipeline.
 
 ## Hard boundaries (read first)
 
@@ -28,9 +28,9 @@ note-distill is a Claude Code plugin that forks a background subagent to distill
                                    ▼
 /note-distill:note → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
       ├── Primary path (COVERAGE=full AND candidates/window available):
-      │   general-purpose subagent (background) — explicit input only, no fork needed
-      └── Fallback path (COVERAGE=empty OR partial):
-          general-purpose subagent (background) — inherits full history via CLAUDE_CODE_FORK_SUBAGENT=1
+      │   general-purpose subagent (background) — runs candidates/window commands itself
+      └── Fallback path (COVERAGE=full but no candidates/window, OR partial/empty):
+          general-purpose subagent (background) — reads events.jsonl directly for conversation context
 
 Subagent flow (both paths):
   1. note-writer-protocol.md → mechanical workflow + bottom-line constraints
@@ -47,11 +47,13 @@ Plugin manifest: `.claude-plugin/plugin.json`
 **No-summarization rule**: see "Hard boundaries" above.
 
 **Primary vs fallback**: The hook system (`hooks/`) records session events and produces note candidates via an analyzer. The `window` command on `note_distill_hook.ts` reports a `coverage` field on every call:
-- `full` — first UserPromptSubmit in `events.jsonl` is a normal user message (hook was online when the session started). Main agent goes **primary**.
-- `partial` — first UserPromptSubmit is already `/note` (hook only started recording at or after the `/note` invocation; everything earlier is missing). Main agent **forces NOTE_CANDIDATES / NOTE_EVENT_WINDOW to `unavailable`** to prevent the subagent from mistaking the captured fragment for the full picture, and goes **fallback**.
+- `full` — first UserPromptSubmit in `events.jsonl` is a normal user message (hook was online when the session started).
+  - If candidates/window available → **primary** path.
+  - If no candidates and no window content → **fallback** path (subagent reads events.jsonl directly).
+- `partial` — first UserPromptSubmit is already `/note` (hook only started recording at or after the `/note` invocation; everything earlier is missing). Main agent sets `SOURCE_PATH=fallback` in the spawn prompt to prevent the subagent from mistaking the captured fragment for the full picture, and goes **fallback**.
 - `empty` — no events at all. Goes **fallback**.
 
-Fallback path requires `CLAUDE_CODE_FORK_SUBAGENT=1` to inherit the main session history (set via `.claude/settings.local.json` `env` field, recommended, or shell profile). Without it, the subagent reports a structured warning instructing the user how to enable it.
+Fallback path: subagent reads events.jsonl directly (user prompts + assistant responses) as conversation context. No platform-specific env vars required.
 
 ## Hook-based candidate pipeline
 
@@ -86,7 +88,9 @@ All via `node --experimental-strip-types hooks/note_distill_hook.ts <command>`:
 
 Configured via `candidate_analyzer.provider` in user config:
 
+- **`auto`** — (default) auto-detects the current platform and prefers the matching CLI (Claude Code session → claude CLI first, CodeBuddy session → codebuddy CLI first), then tries the other CLI, then falls back to heuristic.
 - **`claude`** — spawns `claude --print` with the events as input. Falls back to heuristic if Claude is unavailable or fails.
+- **`codebuddy`** — spawns `codebuddy --print` with the events as input. Falls back to heuristic if CodeBuddy is unavailable or fails.
 - **`heuristic`** — keyword-based (matches Chinese tech keywords like 方案→decision, 修复→bugfix, 架构→architecture).
 - **`fake`** — always produces exactly one candidate (testing/debugging).
 

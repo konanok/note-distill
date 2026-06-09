@@ -2,7 +2,7 @@
 
 你是由主 agent spawn 出来的 note-distill subagent。按本规范工作。
 
-> **路径说明**：`SKILL_DIR`、`TOPIC`、`PLATFORM`、`SESSION_ID` 已在 spawn prompt 中定义。`{SKILL_DIR}/...` 需用实际值替换后读取。
+> **路径说明**：`SKILL_DIR`、`TOPIC`、`COVERAGE`、`SOURCE_PATH` 在 spawn prompt 中定义。PLATFORM、SESSION_ID、EVENT_LOG_PATH、CANDIDATE_LOG_PATH 由 subagent 在步骤 2 自行发现。`{SKILL_DIR}/...` 需用实际值替换后读取。
 
 ## 0. 职责边界
 
@@ -42,22 +42,21 @@
 
 ## 1. 识别要记录什么
 
-**候选知识点 / 事件窗口优先级**：
-1. `NOTE_CANDIDATES` 非 `unavailable` 且含 pending candidates → `primary:candidates`。以其为主要素材，不得因缺少完整主会话历史而要求 fallback 或中止。
-2. 否则 `NOTE_EVENT_WINDOW` 非 `unavailable` → `primary:event-window`。同上。
-3. 否则 → `fallback:full-history`，按增量范围规则从对话历史确定。
+**素材获取方式**：subagent 根据 spawn prompt 中的 COVERAGE 和 SOURCE_PATH 决定素材来源，自行运行命令获取——不依赖主 agent 注入的 JSON blob。
 
-**COVERAGE 与 fallback 触发**：主 agent 在 spawn prompt 中会传入 `COVERAGE` 和 `SOURCE_PATH`：
-- `COVERAGE=full` + `SOURCE_PATH=primary` → 走上方第 1/2 条
-- `COVERAGE=partial`（hook 中途接入）或 `COVERAGE=empty`（hook 未启用/未生效）→ `SOURCE_PATH=fallback`。主 agent 已把 NOTE_CANDIDATES/NOTE_EVENT_WINDOW 强制改写为 `unavailable`，**严禁**绕过去原 events.jsonl 路径自行读取"残缺片段"——那不可信。直接走第 3 条。
+- `COVERAGE=full` + `SOURCE_PATH=primary` → 运行 candidates 和 window 命令获取候选词与事件窗口，以候选词为主素材
+- `COVERAGE=full` + `SOURCE_PATH=fallback` → hook 覆盖完整但 candidates/window 无内容可消费（对话过短或 analyzer 未产出结果），从 EVENT_LOG_PATH 读取对话内容
+- `COVERAGE=partial`（hook 中途接入）或 `COVERAGE=empty`（hook 未启用/未生效）→ `SOURCE_PATH=fallback`。**严禁**信任 partial 状态下 candidates/window 的输出——hook 中途接入，已捕获片段不代表完整对话，不可作为唯一素材。从 EVENT_LOG_PATH 读取对话内容。
 
-完整对话历史只用于消歧、验证和补充背景，不得重新选择范围外的高价值内容。fallback 路径下，"完整对话历史"本身就是主要素材，按增量范围规则界定。
+若 spawn prompt 中 `SELECTED_CANDIDATE_IDS` 非 `none`，运行 candidates 命令后仅使用指定 ID 的候选词（用户已通过 --pick 交互选择）。
 
-**source_refs**：若 `NOTE_CANDIDATES.candidates[*].source_refs` 存在，可运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts context <candidate-json-path>` 读取局部上下文。
+**素材优先级**：candidates > event window > EVENT_LOG_PATH。高优先级素材为主要写作依据，低优先级仅用于消歧、验证和补充背景，不得重新选择范围外的高价值内容。
+
+**source_refs**：若候选词的 `source_refs` 存在，可运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts context <candidate-json-path>` 读取局部上下文。
 
 **Topic Override**：`TOPIC_HINT` 非空时是最高优先级内容选择约束。只记录与之相关的内容。candidates、event window、fallback 都找不到时，回报"未发现与 <TOPIC_HINT> 相关的内容"。
 
-**多候选规则**：一次 `/note` 只写一篇笔记，不合并多个不相关 candidate。`NOTE_CANDIDATES.remaining_count > 0` 时在成功回报中提示剩余数量。
+**多候选规则**：一次 `/note` 只写一篇笔记，不合并多个不相关 candidate。candidates 命令返回 `remaining_count > 0` 时在成功回报中提示剩余数量。
 
 **候选状态**：`pending`（可消费）`consumed`（已写）`dismissed`（已跳过，默认忽略）。
 
@@ -107,8 +106,8 @@ PASS → 继续。WARN → 自行判断。FAIL → 修改重试 ≤3 轮。
 
 ### 标记 consumed
 
-若用了 NOTE_CANDIDATES 中的 candidate：
-1. 收集 candidate IDs（优先 `NOTE_CANDIDATES.selected_candidate_ids`）
+若用了 candidates 命令返回的 candidate：
+1. 收集 candidate IDs（优先 `SELECTED_CANDIDATE_IDS`，否则取 candidates 命令输出中的 selected IDs）
 2. 运行：
 ```bash
 node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts mark-consumed <CANDIDATE_LOG_PATH> --ids <csv> --note-path <path>
