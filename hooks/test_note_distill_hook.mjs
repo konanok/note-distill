@@ -1431,6 +1431,121 @@ function testFindSessionReturnsNewestMatch() {
   assert.equal(result.session_id, "newer-session");
 }
 
+function testParseModelOutputRepairsTruncatedJson() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      session_id: "trunc-test",
+      payload: { prompt: "讨论架构" },
+    },
+    {
+      event: "Stop",
+      session_id: "trunc-test",
+      payload: { last_assistant_message: "结论" },
+    },
+  ]);
+  // Simulate truncated JSON: missing closing brackets
+  const truncated = '{"candidates":[{"type":"architecture","title":"微服务拆分","summary":"按领域拆分服务","claim":"降低耦合","why":"独立部署","confidence":"high","event_range":{"start_index":0,"end_index":1}';
+  const modelOutput = join(dir, "model-output.json");
+  writeFileSync(modelOutput, truncated, "utf8");
+  const parsed = JSON.parse(
+    run(
+      nodeCli(
+        "parse-model-output",
+        modelOutput,
+        "--events",
+        eventsPath
+      )
+    ).stdout
+  );
+  assert.equal(parsed.repaired, true);
+  assert.equal(parsed.candidates.length, 1);
+  assert.equal(parsed.candidates[0].type, "architecture");
+  assert.equal(parsed.candidates[0].analyzer.repaired, undefined);
+}
+
+function testParseModelOutputNoRepairOnValidJson() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      session_id: "valid-test",
+      payload: { prompt: "讨论方案" },
+    },
+    {
+      event: "Stop",
+      session_id: "valid-test",
+      payload: { last_assistant_message: "结论" },
+    },
+  ]);
+  const modelOutput = join(dir, "model-output.json");
+  writeFileSync(
+    modelOutput,
+    JSON.stringify({
+      candidates: [
+        {
+          type: "decision",
+          title: "选择方案A",
+          summary: "方案A更适合",
+          claim: "更灵活",
+          why: "可扩展",
+          confidence: "medium",
+          event_range: { start_index: 0, end_index: 1 },
+        },
+      ],
+    }),
+    "utf8"
+  );
+  const parsed = JSON.parse(
+    run(
+      nodeCli(
+        "parse-model-output",
+        modelOutput,
+        "--events",
+        eventsPath
+      )
+    ).stdout
+  );
+  assert.equal(parsed.repaired, false);
+  assert.equal(parsed.candidates.length, 1);
+}
+
+function testParseModelOutputStripsMarkdownCodeBlock() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  writeJsonl(eventsPath, [
+    {
+      event: "UserPromptSubmit",
+      session_id: "md-test",
+      payload: { prompt: "讨论修复" },
+    },
+    {
+      event: "Stop",
+      session_id: "md-test",
+      payload: { last_assistant_message: "结论" },
+    },
+  ]);
+  const wrapped = 'Here is the analysis:\n```json\n{"candidates":[{"type":"bugfix","title":"修复空指针","summary":"加了null检查","claim":"不再崩溃","why":"用户反馈","confidence":"high","event_range":{"start_index":0,"end_index":1}}]}\n```\nDone.';
+  const modelOutput = join(dir, "model-output.json");
+  writeFileSync(modelOutput, wrapped, "utf8");
+  const parsed = JSON.parse(
+    run(
+      nodeCli(
+        "parse-model-output",
+        modelOutput,
+        "--events",
+        eventsPath
+      )
+    ).stdout
+  );
+  assert.equal(parsed.candidates.length, 1);
+  assert.equal(parsed.candidates[0].type, "bugfix");
+  assert.equal(parsed.repaired, false);
+}
+
 const tests = [
   testCollectorRecordsAndRedacts,
   testCollectorFailOpenOnBadJson,
@@ -1442,6 +1557,9 @@ const tests = [
   testAnalyzerAndCandidateExtraction,
   testContextReadsCandidateSourceRefs,
   testModelJsonParserFixture,
+  testParseModelOutputRepairsTruncatedJson,
+  testParseModelOutputNoRepairOnValidJson,
+  testParseModelOutputStripsMarkdownCodeBlock,
   testFakeAnalyzerProvider,
   testClaudeAnalyzerFallsBackToHeuristic,
   testClaudeAnalyzerFallbackNoneReturnsEmpty,

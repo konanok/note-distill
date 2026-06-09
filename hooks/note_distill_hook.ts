@@ -12,7 +12,7 @@ import {
   writeFileSync,
   closeSync,
 } from "node:fs";
-import { dirname, resolve, join } from "node:path";
+import { dirname, resolve, join, delimiter } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -125,13 +125,8 @@ function analyzerConfig(): JsonObject {
       : {};
   return {
     provider:
-      analyzer.provider ||
-      process.env.NOTE_DISTILL_ANALYZER_PROVIDER ||
-      "claude",
-    model:
-      analyzer.model ||
-      process.env.NOTE_DISTILL_ANALYZER_MODEL ||
-      "claude-haiku-4-5-20251001",
+      analyzer.provider || process.env.NOTE_DISTILL_ANALYZER_PROVIDER || "auto",
+    model: analyzer.model || process.env.NOTE_DISTILL_ANALYZER_MODEL || "haiku",
     fallback: analyzer.fallback || "heuristic",
   };
 }
@@ -585,33 +580,200 @@ function normalizeModelCandidates(
   });
 }
 
+function stripMarkdownCodeBlock(text: string): string {
+  // Prefer ```json block (LLMs often prefix with explanatory text)
+  const jsonMatch = text.match(/```json\s*\n([\s\S]*?)\n\s*```/);
+  if (jsonMatch) return jsonMatch[1].trim();
+  // Fallback: any code block — use greedy match to take the last one
+  // (in case LLM outputs multiple blocks, the JSON is typically last)
+  const anyMatch = text.match(/```\s*\n([\s\S]*)\n\s*```/);
+  return anyMatch ? anyMatch[1].trim() : text.trim();
+}
+
+/**
+ * Attempt to repair truncated JSON by closing open strings/brackets/braces.
+ * LLMs may produce incomplete output when hitting token limits.
+ * Strategy: close structures in the reverse order they were opened,
+ * by re-scanning to find the actual nesting stack.
+ */
+function repairTruncatedJson(text: string): string {
+  let repaired = text.trimEnd();
+  // Remove trailing comma (common before truncation point)
+  repaired = repaired.replace(/,\s*$/, "");
+
+  // Build a nesting stack by scanning the (possibly truncated) text
+  const stack: string[] = [];
+  let inString = false;
+  let escape = false;
+  for (const ch of repaired) {
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{" || ch === "[") {
+      stack.push(ch === "{" ? "}" : "]");
+    } else if (ch === "}" || ch === "]") {
+      if (stack.length > 0) stack.pop();
+    }
+  }
+  // Close any open string first
+  if (inString) repaired += '"';
+  // Close structures in reverse order (innermost first)
+  for (let i = stack.length - 1; i >= 0; i--) {
+    repaired += stack[i];
+  }
+  return repaired;
+}
+
 function parseModelCandidates(
   stdout: string,
   events: JsonObject[],
   eventsPath?: string,
   provider = "model",
   model = ""
-): JsonObject[] {
-  const parsed = JSON.parse(stdout);
+): { candidates: JsonObject[]; repaired: boolean } {
+  const cleaned = stripMarkdownCodeBlock(stdout);
+  let parsed: JsonObject;
+  let repaired = false;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    // Try repairing truncated JSON (common when LLM hits output token limits)
+    try {
+      const repairedText = repairTruncatedJson(cleaned);
+      parsed = JSON.parse(repairedText);
+      repaired = true;
+    } catch {
+      // Unrepairable — re-throw to trigger fallback
+      throw new Error(`Failed to parse model output: ${cleaned.slice(0, 100)}`);
+    }
+  }
   const candidates = Array.isArray(parsed.candidates) ? parsed.candidates : [];
-  return normalizeModelCandidates(
-    candidates,
-    events,
-    eventsPath,
-    provider,
-    model
-  );
+  return {
+    candidates: normalizeModelCandidates(
+      candidates,
+      events,
+      eventsPath,
+      provider,
+      model
+    ),
+    repaired,
+  };
 }
 
-function findClaudeExecutable(): string | null {
-  const configured = process.env.CLAUDE_CODE_PATH;
+/**
+ * Map a semantic model name to the CLI-specific value.
+ * - Claude Code CLI accepts aliases: haiku, sonnet, opus
+ * - CodeBuddy CLI requires full names: claude-haiku-4.5, deepseek-v4-flash-ioa, etc.
+ *
+ * "haiku" = fastest/cheapest option per provider:
+ *   - claude CLI  → haiku (Claude Haiku)
+ *   - codebuddy   → deepseek-v4-flash-ioa (fast + free on CodeBuddy platform)
+ */
+const CLI_MODEL_MAP: Record<string, Record<string, string>> = {
+  claude: {
+    haiku: "haiku",
+    sonnet: "sonnet",
+    opus: "opus",
+  },
+  codebuddy: {
+    haiku: "deepseek-v4-flash-ioa",
+    sonnet: "claude-sonnet-4.7",
+    opus: "claude-opus-4.7",
+  },
+};
+
+function resolveModel(provider: string, model: string): string {
+  const mapped = CLI_MODEL_MAP[provider]?.[model];
+  return mapped || model;
+}
+
+function findExecutable(envVar: string, binaryName: string): string | null {
+  const configured = process.env[envVar];
   if (configured && existsSync(configured)) return configured;
-  const pathDirs = (process.env.PATH || "").split(":");
+  const pathDirs = (process.env.PATH || "").split(delimiter);
   for (const dir of pathDirs) {
-    const candidate = join(dir, "claude");
+    const candidate = join(dir, binaryName);
     if (existsSync(candidate)) return candidate;
   }
   return null;
+}
+
+function findClaudeExecutable(): string | null {
+  return findExecutable("CLAUDE_CODE_PATH", "claude");
+}
+
+function findCodeBuddyExecutable(): string | null {
+  return findExecutable("CODEBUDDY_CODE_PATH", "codebuddy");
+}
+
+/**
+ * Generic CLI-based candidate builder.
+ * Works with both `claude --print` and `codebuddy --print`.
+ */
+function buildCliCandidates(
+  events: JsonObject[],
+  eventsPath: string | undefined,
+  config: JsonObject,
+  provider: string,
+  executable: string
+): JsonObject[] {
+  const args = ["--print"];
+  const modelArg = resolveModel(provider, String(config.model || "haiku"));
+  args.push("--model", modelArg);
+  const result = spawnSync(executable, args, {
+    input: buildAnalyzerPrompt(events),
+    encoding: "utf8",
+    timeout: 60_000,
+  });
+  if (result.status === 0) {
+    try {
+      const { candidates, repaired } = parseModelCandidates(
+        result.stdout,
+        events,
+        eventsPath,
+        provider,
+        modelArg
+      );
+      if (repaired) {
+        return candidates.map((c: JsonObject) => ({
+          ...c,
+          analyzer: { ...c.analyzer, repaired: true },
+        }));
+      }
+      return candidates;
+    } catch {
+      // fall through to fallback
+    }
+  } else {
+    const stderr = (result.stderr || "").trim();
+    if (stderr) {
+      process.stderr.write(
+        `[note-distill] ${provider} CLI failed (status ${
+          result.status
+        }): ${stderr.slice(0, 200)}\n`
+      );
+    }
+  }
+  return config.fallback === "heuristic"
+    ? buildHeuristicCandidates(events, eventsPath).map((candidate) => ({
+        ...candidate,
+        analyzer: {
+          provider: "heuristic",
+          fallback_from: provider,
+          reason: `${provider}_failed`,
+        },
+      }))
+    : [];
 }
 
 function buildClaudeCandidates(
@@ -632,36 +794,105 @@ function buildClaudeCandidates(
         }))
       : [];
   }
-  const args = ["--print"];
-  if (config.model) args.push("--model", String(config.model));
-  const result = spawnSync(claude, args, {
-    input: buildAnalyzerPrompt(events),
-    encoding: "utf8",
-    timeout: 60_000,
-  });
-  if (result.status === 0) {
-    try {
-      return parseModelCandidates(
-        result.stdout,
-        events,
-        eventsPath,
-        "claude",
-        String(config.model || "")
-      );
-    } catch {
-      // fall through to fallback
+  return buildCliCandidates(events, eventsPath, config, "claude", claude);
+}
+
+function buildCodeBuddyCandidates(
+  events: JsonObject[],
+  eventsPath: string | undefined,
+  config: JsonObject
+): JsonObject[] {
+  const codebuddy = findCodeBuddyExecutable();
+  if (!codebuddy) {
+    return config.fallback === "heuristic"
+      ? buildHeuristicCandidates(events, eventsPath).map((candidate) => ({
+          ...candidate,
+          analyzer: {
+            provider: "heuristic",
+            fallback_from: "codebuddy",
+            reason: "codebuddy_not_found",
+          },
+        }))
+      : [];
+  }
+  return buildCliCandidates(events, eventsPath, config, "codebuddy", codebuddy);
+}
+
+/**
+ * Auto-detect: prefer the CLI that matches the current platform,
+ * then try the other, then heuristic fallback.
+ *
+ * Platform is detected from the first event's transcript_path:
+ *   .claude/ → "claude-code" → try claude CLI first
+ *   CodeBuddyExtension/ or .codebuddy/ → "codebuddy" → try codebuddy CLI first
+ *   unknown → try claude CLI first (legacy default)
+ */
+function buildAutoCandidates(
+  events: JsonObject[],
+  eventsPath: string | undefined,
+  config: JsonObject
+): JsonObject[] {
+  const firstEvent = events.find((e) => e.transcript_path);
+  const platform = firstEvent
+    ? detectPlatform(String(firstEvent.transcript_path))
+    : "unknown";
+
+  type CliProbe = {
+    name: string;
+    find: () => string | null;
+    build: (exe: string) => JsonObject[];
+  };
+  const probes: CliProbe[] =
+    platform === "codebuddy"
+      ? [
+          {
+            name: "codebuddy",
+            find: findCodeBuddyExecutable,
+            build: (exe) =>
+              buildCliCandidates(events, eventsPath, config, "codebuddy", exe),
+          },
+          {
+            name: "claude",
+            find: findClaudeExecutable,
+            build: (exe) =>
+              buildCliCandidates(events, eventsPath, config, "claude", exe),
+          },
+        ]
+      : [
+          {
+            name: "claude",
+            find: findClaudeExecutable,
+            build: (exe) =>
+              buildCliCandidates(events, eventsPath, config, "claude", exe),
+          },
+          {
+            name: "codebuddy",
+            find: findCodeBuddyExecutable,
+            build: (exe) =>
+              buildCliCandidates(events, eventsPath, config, "codebuddy", exe),
+          },
+        ];
+
+  for (const probe of probes) {
+    const exe = probe.find();
+    if (!exe) continue;
+    const candidates = probe.build(exe);
+    if (
+      candidates.length > 0 &&
+      candidates[0].analyzer?.provider === probe.name
+    ) {
+      return candidates;
     }
   }
-  return config.fallback === "heuristic"
-    ? buildHeuristicCandidates(events, eventsPath).map((candidate) => ({
-        ...candidate,
-        analyzer: {
-          provider: "heuristic",
-          fallback_from: "claude",
-          reason: "claude_failed",
-        },
-      }))
-    : [];
+
+  return buildHeuristicCandidates(events, eventsPath).map((candidate) => ({
+    ...candidate,
+    analyzer: {
+      provider: "heuristic",
+      fallback_from: "auto",
+      reason: "no_cli_available",
+    },
+  }));
 }
 
 function buildModelCandidates(
@@ -673,6 +904,10 @@ function buildModelCandidates(
     return buildFakeCandidates(events, eventsPath);
   if (config.provider === "claude")
     return buildClaudeCandidates(events, eventsPath, config);
+  if (config.provider === "codebuddy")
+    return buildCodeBuddyCandidates(events, eventsPath, config);
+  if (config.provider === "auto")
+    return buildAutoCandidates(events, eventsPath, config);
   return buildHeuristicCandidates(events, eventsPath).map((candidate) => ({
     ...candidate,
     analyzer: { provider: "heuristic" },
@@ -916,14 +1151,16 @@ function commandParseModelOutput(args: string[]): number {
     );
   const stdout = readFileSync(resolve(outputPath), "utf8");
   const eventsPath = resolve(parsed.options.events);
-  const candidates = parseModelCandidates(
+  const { candidates: modelCandidates, repaired } = parseModelCandidates(
     stdout,
     loadJsonl(eventsPath),
     eventsPath,
     parsed.options.provider || "model",
     parsed.options.model || ""
   );
-  process.stdout.write(JSON.stringify({ candidates }, null, 2) + "\n");
+  process.stdout.write(
+    JSON.stringify({ candidates: modelCandidates, repaired }, null, 2) + "\n"
+  );
   return 0;
 }
 

@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Candidate analyzer default provider changed from `claude` to `auto`. The `auto` provider detects the current platform (Claude Code or CodeBuddy) and prefers the matching CLI for analysis, falling back to the other CLI, then to heuristic.
+- `repairTruncatedJson` now surfaces a `repaired: true` flag on candidate objects when JSON repair was applied, for observability of potentially truncated data.
+- `parse-model-output` command output now includes a `repaired` boolean field indicating whether the input JSON was repaired.
+- `findExecutable` now uses `path.delimiter` instead of hardcoded `:` for PATH splitting, improving Windows compatibility.
+
+### Added
+- `codebuddy` provider: spawns `codebuddy --print` for candidate analysis, mirroring the existing `claude --print` flow.
+- `auto` provider: platform-aware CLI detection — prefers the same-platform CLI (CodeBuddy session → codebuddy CLI first, Claude Code session → claude CLI first), then tries the other CLI, then falls back to heuristic.
+- `CLI_MODEL_MAP`: semantic model name mapping per provider (`haiku`/`sonnet`/`opus` → provider-specific CLI model IDs). CodeBuddy maps `haiku` → `deepseek-v4-flash-ioa`, `sonnet` → `claude-sonnet-4.6`, `opus` → `claude-opus-4.8`.
+- `stripMarkdownCodeBlock()`: strips ```json code block wrapping from LLM output before parsing.
+- `repairTruncatedJson()`: closes open strings/brackets/braces in truncated LLM JSON output using a nesting stack approach.
+- `buildCliCandidates()` logs stderr when CLI execution fails (status ≠ 0) for easier debugging.
+- Tests: `testParseModelOutputRepairsTruncatedJson`, `testParseModelOutputNoRepairOnValidJson`, `testParseModelOutputStripsMarkdownCodeBlock` covering the new pure functions.
+
+### Changed
 - `{{date}}` 模板变量重命名为 `{{datetime}}`，frontmatter 中 `created`/`updated` 格式从 `YYYY-MM-DD` 改为 `YYYY-MM-DD HH:MM:SS`。移除 `date +%Y-%m-%d` 等平台特定命令硬编码，改为平台无关获取方式。输出文件名中的 `{date}` 仍为 `YYYY-MM-DD`。
 
 ### Added
