@@ -12,9 +12,6 @@
   "link_style": "markdown",
   "_link_style_comment": "链接风格：markdown（[text](url)）或 wikilink（[[概念名]]）。obsidian / LLM Wiki 用户建议 wikilink",
 
-  "default_topic": "til",
-  "_default_topic_comment": "不指定 topic 时的默认值，出厂默认 til。可选: til, adr, design，或用户自定义的任何 topic",
-
   "topics_dir": "~/.config/note-distill/topics",
   "_topics_dir_comment": "用户自定义 topic 目录，可省略（默认值如上）",
 

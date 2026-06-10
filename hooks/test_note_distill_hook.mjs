@@ -987,7 +987,6 @@ function testMergeConfigCommand() {
     JSON.stringify({
       adapter: "local-markdown",
       output_dir: "/tmp/global",
-      default_topic: "adr",
     }),
     "utf8"
   );
@@ -1668,6 +1667,58 @@ function testAnalyzerDisabledViaEnvVar() {
   assert.equal(analyzeResult.candidates, 0);
 }
 
+function testConfigExampleMatchesHookDefaults() {
+  // Ensure config.example.json (human-readable, with _comment fields) stays in
+  // sync with the defaults the hook actually uses at runtime.  The hook now
+  // reads config.example.json as its default base, so merge-config with no
+  // user config should produce the same structure (minus _comment fields).
+  const examplePath = join(ROOT, "..", "skills", "note", "config.example.json");
+  const raw = JSON.parse(readFileSync(examplePath, "utf8"));
+  // Strip _comment / _xxx annotation keys
+  function stripComments(obj) {
+    if (Array.isArray(obj)) return obj.map(stripComments);
+    if (obj && typeof obj === "object") {
+      const out = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (k.startsWith("_")) continue;
+        out[k] = stripComments(v);
+      }
+      return out;
+    }
+    return obj;
+  }
+  const example = stripComments(raw);
+
+  // Read hook defaults via merge-config with no user config (empty tmp dir)
+  const dir = tempDir();
+  const merged = JSON.parse(
+    run(nodeCli("merge-config"), {
+      env: { NOTE_DISTILL_CONFIG: join(dir, "nonexistent.json") },
+      cwd: dir,
+    }).stdout
+  );
+
+  // Compare only the keys that exist in config.example.json
+  for (const key of Object.keys(example)) {
+    if (key === "output_dir" || key === "obsidian_vault_path") continue; // path fields are user-specific
+    assert.deepEqual(
+      merged[key],
+      example[key],
+      `config.example.json "${key}" = ${JSON.stringify(
+        example[key]
+      )} but merge-config default = ${JSON.stringify(merged[key])}`
+    );
+  }
+  // Also check that merge-config doesn't have config keys absent from example
+  for (const key of Object.keys(merged)) {
+    if (key === "output_dir" || key === "obsidian_vault_path") continue;
+    assert.ok(
+      key in example,
+      `merge-config has "${key}" but config.example.json does not`
+    );
+  }
+}
+
 const tests = [
   testCollectorSkipsWhenAnalyzerChild,
   testAnalyzerDisabledSkipsCandidateExtraction,
@@ -1716,6 +1767,7 @@ const tests = [
   testFindSessionDetectsCodeBuddyOldFormat,
   testFindSessionReturnsNullWhenNoMatch,
   testFindSessionReturnsNewestMatch,
+  testConfigExampleMatchesHookDefaults,
 ];
 
 for (const test of tests) {

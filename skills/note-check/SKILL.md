@@ -22,23 +22,22 @@ description: 诊断 note-distill 配置是否正确
    - `obsidian` → 检查 `obsidian_vault_path`：为空则报"obsidian_vault_path 未填写"；不为空则检查目录是否存在
    - 其他值 → 报"不支持的 adapter: <值>"
 
-4. 检查 `~/.config/note-distill/topics/` 目录下是否有至少一个子目录（含 `prompt.md` + `template.md`）：
-   - 无 → 提示"topic 目录为空，建议执行 `/note-config` 重新生成默认 topic"
+4. 检查 topic 可用性（三级回退：项目 `.note-distill/topics/` > 用户 `~/.config/note-distill/topics/` > 出厂 `{SKILL_DIR}/topics/`）：
+   - 用户级 `~/.config/note-distill/topics/` 为空 → 仅提示"用户目录下无自定义 topic，将使用出厂模板"，不算错误
+   - 确认至少有一个可用 topic（含 `prompt.md` + `template.md`），无则报错
 
-5. 检查 `default_topic` 是否已配置（缺失仅提示，不报错）
-
-6. 检查 `candidate_selection`（缺失仅提示并使用默认值）：
+5. 检查 `candidate_selection`（缺失时从出厂配置继承，仅提示）：
    - `default_behavior` 若存在，必须是 `auto` / `pick` / `all`
    - `auto_pick_strategy` 若存在，必须是 `oldest` / `newest` / `priority`
    - `max_pick_options` 若存在，必须是正整数
 
-7. 检查 `candidate_analyzer`（缺失仅提示并使用默认值）：
+6. 检查 `candidate_analyzer`（缺失时从出厂配置继承，仅提示）：
    - `enabled` 若存在，必须是布尔值（默认 `true`；设 `false` 关闭自动候选词提取）
    - `provider` 若存在，必须是 `auto` / `claude` / `codebuddy` / `heuristic` / `fake`
    - `model` 可为空；默认 `haiku`（语义名，经 CLI_MODEL_MAP 映射为各 provider 的实际 model ID）
    - `fallback` 若存在，必须是 `heuristic` / `none`
 
-8. 权限检查：按 adapter 取目标根目录（`output_dir` 或 `obsidian_vault_path`），
+7. 权限检查：按 adapter 取目标根目录（`output_dir` 或 `obsidian_vault_path`），
    尝试 `mkdir -p <target_root>` 和 `Write` 一个测试文件：
    - 成功 → 立即删除测试文件，通过
    - 失败 → 提示用户将以下规则添加到 `.claude/settings.local.json`：
@@ -49,7 +48,7 @@ description: 诊断 note-distill 配置是否正确
      "Write(<target_root>/**)"
      ```
 
-9. 汇总报告：
+8. 汇总报告：
    - 全部通过 → ✅ 配置正常（全局 + 项目级合并）。可以用 `/note` 或 `/note <topic>` 开始记笔记。
    - 有问题 → 逐项列出问题 + 修复建议
    - 若项目级配置存在 → 注明"已合并项目级配置 `./.note-distill.json`"

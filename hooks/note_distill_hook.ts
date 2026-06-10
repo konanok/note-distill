@@ -25,6 +25,13 @@ const CONFIG_PATH = expandHome(
 );
 const LOCK_TIMEOUT_MS =
   Number(process.env.NOTE_DISTILL_ANALYZER_LOCK_TIMEOUT_MS) || 60_000;
+const EXAMPLE_CONFIG_PATH = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "skills",
+  "note",
+  "config.example.json"
+);
 const SECRET_PATTERNS: RegExp[] = [
   /(password|passwd|pwd|token|api[_-]?key|secret[_-]?key|secret)\s*[:=]\s*\S+/gi,
   /\bbearer\s+\S+/gi,
@@ -73,10 +80,37 @@ function readStdin(): Promise<string> {
   });
 }
 
+function stripCommentKeys(obj: JsonObject): JsonObject {
+  if (Array.isArray(obj))
+    return obj.map(stripCommentKeys) as unknown as JsonObject;
+  if (obj && typeof obj === "object") {
+    const out: JsonObject = {};
+    for (const [k, v] of Object.entries(obj)) {
+      if (k.startsWith("_")) continue;
+      out[k] = stripCommentKeys(v as JsonObject);
+    }
+    return out;
+  }
+  return obj;
+}
+
+function loadExampleConfig(): JsonObject {
+  try {
+    return stripCommentKeys(
+      JSON.parse(readFileSync(EXAMPLE_CONFIG_PATH, "utf8"))
+    );
+  } catch (e) {
+    process.stderr.write(
+      `[note-distill] WARNING: failed to load example config from ${EXAMPLE_CONFIG_PATH}: ${(e as Error).message}\n`
+    );
+    return {};
+  }
+}
+
 function loadGlobalConfig(): JsonObject {
   if (!existsSync(CONFIG_PATH)) return {};
   try {
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    return stripCommentKeys(JSON.parse(readFileSync(CONFIG_PATH, "utf8")));
   } catch {
     return {};
   }
@@ -86,7 +120,7 @@ function loadProjectConfig(): JsonObject {
   const projectPath = join(process.cwd(), ".note-distill.json");
   if (!existsSync(projectPath)) return {};
   try {
-    return JSON.parse(readFileSync(projectPath, "utf8"));
+    return stripCommentKeys(JSON.parse(readFileSync(projectPath, "utf8")));
   } catch {
     return {};
   }
@@ -114,7 +148,14 @@ function deepMerge(base: JsonObject, override: JsonObject): JsonObject {
 }
 
 function loadConfig(): JsonObject {
-  return deepMerge(loadGlobalConfig(), loadProjectConfig());
+  // stripCommentKeys is defensive — each load*Config() strips its own output,
+  // but this outer call catches any _xxx keys that might slip through deepMerge.
+  return stripCommentKeys(
+    deepMerge(
+      loadExampleConfig(),
+      deepMerge(loadGlobalConfig(), loadProjectConfig())
+    )
+  );
 }
 
 function analyzerConfig(): JsonObject {
@@ -125,16 +166,16 @@ function analyzerConfig(): JsonObject {
       : {};
   return {
     enabled:
-      analyzer.enabled != null
+      process.env.NOTE_DISTILL_ANALYZER_ENABLED === "0" ||
+      process.env.NOTE_DISTILL_ANALYZER_ENABLED === "false"
+        ? false
+        : analyzer.enabled != null
         ? String(analyzer.enabled) !== "false" &&
           String(analyzer.enabled) !== "0" &&
           String(analyzer.enabled) !== "null"
-        : process.env.NOTE_DISTILL_ANALYZER_ENABLED === "0" ||
-          process.env.NOTE_DISTILL_ANALYZER_ENABLED === "false"
-        ? false
         : true,
     provider:
-      analyzer.provider || process.env.NOTE_DISTILL_ANALYZER_PROVIDER || "auto",
+      analyzer.provider || process.env.NOTE_DISTILL_ANALYZER_PROVIDER,
     model: analyzer.model || process.env.NOTE_DISTILL_ANALYZER_MODEL || "haiku",
     fallback: analyzer.fallback || "heuristic",
   };

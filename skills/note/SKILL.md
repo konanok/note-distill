@@ -1,6 +1,6 @@
 ---
 name: note
-description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。出厂 til、adr、design，支持用户自定义 topic。
+description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、design，支持用户自定义 topic。
 argument-hint: [til|adr|design] [可选描述]
 ---
 
@@ -8,7 +8,7 @@ argument-hint: [til|adr|design] [可选描述]
 
 ## 1. 解析参数
 
-首 token 匹配已知 topic 名 → TOPIC=该 token，其余为 TOPIC_HINT。不匹配 → TOPIC=config 的 `default_topic`（缺省 `til`），全部为 TOPIC_HINT。已知 topic 名 = 项目级（`./.note-distill/topics/`）> 用户级（`topics_dir`）> 出厂（`{SKILL_DIR}/topics/`）三级目录下的子目录名合集。
+首 token 匹配已知 topic 名 → TOPIC=该 token，其余为 TOPIC_HINT。不匹配 → TOPIC=`auto`，全部为 TOPIC_HINT。`auto` 表示由 subagent 读取素材后自行判断最匹配的 topic。已知 topic 名 = 项目级（`./.note-distill/topics/`）> 用户级（`topics_dir`）> 出厂（`{SKILL_DIR}/topics/`）三级目录下的子目录名合集。
 
 若含 `--auto` / `--pick` / `pick` / `select` / `--all` → 移除，对应设置 SELECTION_BEHAVIOR。缺省取 config `candidate_selection.default_behavior`（兜底 `auto`）。AUTO_PICK_STRATEGY 取 config（兜底 `oldest`），MAX_PICK_OPTIONS 取 config（兜底 `5`）。非法值降级为默认值并提示。
 
@@ -90,7 +90,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 你是 note-distill subagent。将会话中值得记录的内容按 topic 规范写成笔记。
 
 输入：
-  TOPIC = {name}              TOPIC_HINT = "{text}"
+  TOPIC = {name|auto}         TOPIC_HINT = "{text}"
   SKILL_DIR = {dir}
   COVERAGE = {full|partial|empty}
   SOURCE_PATH = {primary|fallback}
@@ -116,10 +116,16 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
      若 SELECTED_CANDIDATE_IDS 非 `none`，仅使用指定 ID 的候选词（用户已通过 --pick 选择）
    - SOURCE_PATH=fallback：从 EVENT_LOG_PATH 读取对话内容（见下方 Fallback 模式专用指令）
 
-5. 按优先级查找 topic 目录（项目 .note-distill/topics/ > 用户 topics_dir > 出厂 SKILL_DIR/topics/），
-   读 prompt.md（领域判断 + 写作要求）和 template.md（输出骨架）
+5. 确定 topic：
+   - TOPIC 非 `auto` → 直接使用，按优先级查找 topic 目录（项目 .note-distill/topics/ > 用户 topics_dir > 出厂 SKILL_DIR/topics/），读 prompt.md 和 template.md
+   - TOPIC=`auto` → 自动判断：
+     若有候选词且候选词含 `type` 字段，用作初始路由提示：decision → 优先检查 adr；architecture → 优先检查 design；gotcha/howto/command → 优先检查 til；bugfix/research → 需结合内容进一步判断
+     a. 枚举所有可用 topic 目录，读每个 topic 的 prompt.md **开头部分**（到"不该记"/"不记录"段结束为止——即 scope 判断区域，通常前 20 行）
+     b. 对照素材内容，逐个评估每个 topic 的"该记什么"/"不该记"标准
+     c. 选择匹配度最高的 topic（唯一匹配 → 直接用；多个匹配 → 选条件满足最充分的；均不匹配 → 回报"未发现值得记录的内容，未生成笔记。"并结束）
+     d. 用选定的 topic **读完整 prompt.md 和 template.md**，继续后续步骤
 
-6. 按 protocol §1 识别内容范围，以 prompt.md 的标准判断是否值得记录
+6. 按 protocol §1 识别内容范围，以选定的 prompt.md 的标准判断是否值得记录
 
 7. 填充 template.md 中的所有 {{variable}}，不得保留未替换的占位符。
    {{datetime}} = 当前时间，格式 `YYYY-MM-DD HH:MM:SS`（通过 shell 命令或运行时 API 获取）；{{slug}} = 英文小写连字符 ≤50 字符；{{domain_tags}} ≤4 个
@@ -148,6 +154,6 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 
 ## 5. 汇报
 
-spawn 后回复：`📝 笔记任务已派发到后台（topic: {topic}）。完成后会通知你。`
+spawn 后回复：`📝 笔记任务已派发到后台（topic: {topic，auto 时显示"自动判断"}）。完成后会通知你。`
 
 禁止：主 agent 摘要/提炼、前台跑、硬编码路径。
