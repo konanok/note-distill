@@ -26,13 +26,13 @@ argument-hint: [til|adr|design|arch|investigation|diag] [可选描述]
 
 **SESSION_ID / PLATFORM 判断**（三级）：
 1. `$CLAUDE_CODE_SESSION_ID` 非空 → SESSION_ID=该值，PLATFORM=`claude-code`
-2. 运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts find-session --cwd <当前工作目录>` → 从 JSON 取 SESSION_ID 和 PLATFORM
+2. 运行 `node --experimental-strip-types {SKILL_DIR}/scripts/find-session.ts --cwd <当前工作目录>` → 从 JSON 取 SESSION_ID 和 PLATFORM
 3. 以上均无 → SESSION_ID=`unknown`，PLATFORM=`unknown`
 
 SESSION_ID 非 `unknown` 且 helper 存在时，运行 window 命令确定 COVERAGE：
 
 ```
-node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts window <EVENT_LOG_PATH>
+node --experimental-strip-types {SKILL_DIR}/scripts/window.ts <EVENT_LOG_PATH>
 ```
 
 EVENT_LOG_PATH = `<DATA_DIR>/sessions/<SESSION_ID>/events.jsonl`，DATA_DIR = `$NOTE_DISTILL_DATA_DIR` 或 `~/.local/share/note-distill`。helper 不存在或执行失败 → COVERAGE = `empty`。
@@ -45,7 +45,7 @@ EVENT_LOG_PATH = `<DATA_DIR>/sessions/<SESSION_ID>/events.jsonl`，DATA_DIR = `$
 **若 SELECTION_BEHAVIOR=pick**，额外运行 candidates 命令获取用户选项：
 
 ```
-node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts candidates <CANDIDATE_LOG_PATH> \
+node --experimental-strip-types {SKILL_DIR}/scripts/candidates.ts <CANDIDATE_LOG_PATH> \
   --events <EVENT_LOG_PATH> \
   [--topic <TOPIC_HINT>] \
   --selection pick --strategy <AUTO_PICK_STRATEGY> --max-options <MAX_PICK_OPTIONS>
@@ -97,11 +97,11 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
   SELECTED_CANDIDATE_IDS = {csv|none}
 
 流程：
-1. 获取配置：`node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts merge-config`
+1. 获取配置：`node --experimental-strip-types {SKILL_DIR}/scripts/merge-config.ts`
 
 2. 确定平台与会话（自行发现，无需主 agent 注入）：
    a. 检查 `$CLAUDE_CODE_SESSION_ID` → 若非空，SESSION_ID=该值，PLATFORM=`claude-code`
-   b. 否则运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts find-session --cwd <当前工作目录>` → 从 JSON 取 SESSION_ID 和 PLATFORM
+   b. 否则运行 `node --experimental-strip-types {SKILL_DIR}/scripts/find-session.ts --cwd <当前工作目录>` → 从 JSON 取 SESSION_ID 和 PLATFORM
    c. 均无 → SESSION_ID=`unknown`，PLATFORM=`unknown`
    d. 构造路径：DATA_DIR = `$NOTE_DISTILL_DATA_DIR` 或 `~/.local/share/note-distill`
       EVENT_LOG_PATH = `<DATA_DIR>/sessions/<SESSION_ID>/events.jsonl`
@@ -111,8 +111,8 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 
 4. 按 SOURCE_PATH 获取素材：
    - SOURCE_PATH=primary：
-     a. `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts window <EVENT_LOG_PATH>`
-     b. `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts candidates <CANDIDATE_LOG_PATH> --events <EVENT_LOG_PATH> [--topic <TOPIC_HINT>] --selection auto --strategy oldest`
+     a. `node --experimental-strip-types {SKILL_DIR}/scripts/window.ts <EVENT_LOG_PATH>`
+     b. `node --experimental-strip-types {SKILL_DIR}/scripts/candidates.ts <CANDIDATE_LOG_PATH> --events <EVENT_LOG_PATH> [--topic <TOPIC_HINT>] --selection auto --strategy oldest`
      若 SELECTED_CANDIDATE_IDS 非 `none`，仅使用指定 ID 的候选词（用户已通过 --pick 选择）
    - SOURCE_PATH=fallback：从 EVENT_LOG_PATH 读取对话内容（见下方 Fallback 模式专用指令）
 
@@ -132,7 +132,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 7. 填充 template.md 中的所有 {{variable}}，不得保留未替换的占位符。
    {{datetime}} = 当前时间，格式 `YYYY-MM-DD HH:MM:SS`（通过 shell 命令或运行时 API 获取）；{{slug}} = 英文小写连字符 ≤50 字符；{{domain_tags}} ≤4 个
 
-8. 校验：`node --experimental-strip-types {SKILL_DIR}/../../hooks/validate-note.ts <note> --template <tpl>`
+8. 校验：`node --experimental-strip-types {SKILL_DIR}/scripts/validate-note.ts <note> --template <tpl>`
    FAIL 则修改重试 ≤3 轮
 
 9. 写入：按 protocol §4 的写入规范

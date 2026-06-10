@@ -13,10 +13,10 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
-const CLI = join(ROOT, "note_distill_hook.ts");
+// ROOT = skills/note/scripts/
+const HOOK_CLI = join(ROOT, "..", "..", "..", "hooks", "note_distill_hook.ts");
+const TOPIC_INFO = join(ROOT, "topic-info.ts");
 const VALIDATE = join(ROOT, "validate-note.ts");
-const WRAPPER = join(ROOT, "run-hook.cmd");
-const TOPIC_INFO = join(ROOT, "..", "skills", "note", "scripts", "topic-info.ts");
 
 function run(command, { input, env, cwd } = {}) {
   const result = spawnSync(command[0], command.slice(1), {
@@ -35,8 +35,17 @@ function run(command, { input, env, cwd } = {}) {
   return result;
 }
 
-function nodeCli(...args) {
-  return [process.execPath, "--experimental-strip-types", CLI, ...args];
+function hookCli(...args) {
+  return [process.execPath, "--experimental-strip-types", HOOK_CLI, ...args];
+}
+
+function skillCli(script, ...args) {
+  return [
+    process.execPath,
+    "--experimental-strip-types",
+    join(ROOT, script),
+    ...args,
+  ];
 }
 
 function topicInfoCli(...args) {
@@ -88,76 +97,6 @@ async function waitForJsonl(path) {
   return readJsonl(path);
 }
 
-async function testCollectorRecordsAndRedacts() {
-  const dir = tempDir();
-  run(nodeCli("collect"), {
-    env: { NOTE_DISTILL_DATA_DIR: dir },
-    input: JSON.stringify({
-      hook_event_name: "UserPromptSubmit",
-      session_id: "redact-test",
-      cwd: "/tmp",
-      transcript_path: "/tmp/transcript.jsonl",
-      prompt: "token=abc123 password: secret Authorization: Bearer xyz",
-    }),
-  });
-  const records = readJsonl(
-    join(dir, "sessions", "redact-test", "events.jsonl")
-  );
-  assert.equal(records.length, 1);
-  const prompt = records[0].payload.prompt;
-  assert.equal(prompt.includes("abc123"), false);
-  assert.equal(prompt.includes("secret"), false);
-  assert.equal(prompt.includes("xyz"), false);
-  assert.equal(prompt.includes("[REDACTED]"), true);
-}
-
-function testCollectorFailOpenOnBadJson() {
-  const dir = tempDir();
-  const result = run(nodeCli("collect"), {
-    env: { NOTE_DISTILL_DATA_DIR: dir },
-    input: "not-json",
-  });
-  assert.equal(JSON.parse(result.stdout).continue, true);
-  assert.equal(
-    existsSync(join(dir, "logs", "session-collector-error.log")),
-    true
-  );
-}
-
-async function testWrapperInvokesCollectorAndAnalyzer() {
-  const dir = tempDir();
-  run(["bash", WRAPPER, "note_distill_hook.ts", "collect"], {
-    env: { NOTE_DISTILL_DATA_DIR: dir, ...heuristicConfigEnv(dir) },
-    input: JSON.stringify({
-      hook_event_name: "UserPromptSubmit",
-      session_id: "wrapper-flow",
-      cwd: "/tmp",
-      transcript_path: "/tmp/transcript.jsonl",
-      prompt: "这个方案应该用 hook 采集事件窗口",
-    }),
-  });
-  run(["bash", WRAPPER, "note_distill_hook.ts", "collect"], {
-    env: { NOTE_DISTILL_DATA_DIR: dir, ...heuristicConfigEnv(dir) },
-    input: JSON.stringify({
-      hook_event_name: "Stop",
-      session_id: "wrapper-flow",
-      cwd: "/tmp",
-      transcript_path: "/tmp/transcript.jsonl",
-      last_assistant_message: "方案：Stop 后异步生成 note candidates。",
-    }),
-  });
-  const sessionDir = join(dir, "sessions", "wrapper-flow");
-  assert.deepEqual(
-    readJsonl(join(sessionDir, "events.jsonl")).map((record) => record.event),
-    ["UserPromptSubmit", "Stop"]
-  );
-  const candidates = await waitForJsonl(
-    join(sessionDir, "note_candidates.jsonl")
-  );
-  assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].status, "pending");
-}
-
 function testExtractNoteWindow() {
   const dir = tempDir();
   const eventsPath = join(dir, "events.jsonl");
@@ -180,7 +119,7 @@ function testExtractNoteWindow() {
       payload: { prompt: "/note deep note incremental scope" },
     },
   ]);
-  const result = JSON.parse(run(nodeCli("window", eventsPath)).stdout);
+  const result = JSON.parse(run(skillCli("window.ts", eventsPath)).stdout);
   assert.equal(result.previous_note.prompt, "/note quick git squash");
   assert.equal(result.current_note.prompt, "/note deep note incremental scope");
   assert.deepEqual(
@@ -208,7 +147,7 @@ function testWindowReportsPartialCoverageWhenHookJoinedMidSession() {
       payload: { prompt: "/note 记录一下刚才聊的 NUMA 调度方案" },
     },
   ]);
-  const result = JSON.parse(run(nodeCli("window", eventsPath)).stdout);
+  const result = JSON.parse(run(skillCli("window.ts", eventsPath)).stdout);
   assert.equal(result.coverage, "partial");
   // Current note is detected, no previous note.
   assert.equal(result.previous_note, null);
@@ -222,7 +161,7 @@ function testWindowReportsEmptyCoverageWhenNoEvents() {
   const dir = tempDir();
   const eventsPath = join(dir, "events.jsonl");
   writeFileSync(eventsPath, "", "utf8");
-  const result = JSON.parse(run(nodeCli("window", eventsPath)).stdout);
+  const result = JSON.parse(run(skillCli("window.ts", eventsPath)).stdout);
   assert.equal(result.coverage, "empty");
   assert.deepEqual(result.events, []);
 }
@@ -241,7 +180,8 @@ function testCandidatesCommandSurfacesCoverage() {
   ]);
   writeJsonl(candidatesPath, []);
   const result = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout
+    run(skillCli("candidates.ts", candidatesPath, "--events", eventsPath))
+      .stdout
   );
   assert.equal(result.coverage, "partial");
 }
@@ -270,7 +210,7 @@ function testAnalyzerAndCandidateExtraction() {
       payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: heuristicConfigEnv(dir),
   });
   const candidates = readJsonl(candidatesPath);
@@ -286,7 +226,7 @@ function testAnalyzerAndCandidateExtraction() {
     },
   ]);
   const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath)).stdout
+    run(skillCli("candidates.ts", candidatesPath)).stdout
   );
   assert.deepEqual(extracted.selected_candidate_ids, [
     candidates[0].candidate_id,
@@ -322,7 +262,7 @@ function testContextReadsCandidateSourceRefs() {
     }),
     "utf8"
   );
-  const context = JSON.parse(run(nodeCli("context", candidatePath)).stdout);
+  const context = JSON.parse(run(skillCli("context.ts", candidatePath)).stdout);
   assert.equal(context.contexts.length, 1);
   assert.deepEqual(
     context.contexts[0].events.map(
@@ -333,171 +273,6 @@ function testContextReadsCandidateSourceRefs() {
       "方案：按 candidate source_refs 读取局部上下文。",
     ]
   );
-}
-
-function testModelJsonParserFixture() {
-  const dir = tempDir();
-  const modelOutput = join(dir, "model-output.json");
-  const eventsPath = join(dir, "events.jsonl");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "model-test",
-      payload: { prompt: "讨论 source_refs" },
-    },
-    {
-      event: "Stop",
-      session_id: "model-test",
-      payload: { last_assistant_message: "结论：按 range 补上下文。" },
-    },
-  ]);
-  writeFileSync(
-    modelOutput,
-    JSON.stringify({
-      candidates: [
-        {
-          type: "architecture",
-          title: "source_refs 补上下文",
-          summary: "按 candidate source_refs 读取局部上下文。",
-          claim: "source_refs 让 /note 不需要读完整会话。",
-          why: "降低上下文成本。",
-          confidence: "high",
-          event_range: { start_index: 0, end_index: 1 },
-        },
-      ],
-    }),
-    "utf8"
-  );
-  const parsed = JSON.parse(
-    run(
-      nodeCli(
-        "parse-model-output",
-        modelOutput,
-        "--events",
-        eventsPath,
-        "--provider",
-        "fake-model"
-      )
-    ).stdout
-  );
-  assert.equal(parsed.candidates.length, 1);
-  assert.equal(parsed.candidates[0].type, "architecture");
-  assert.equal(parsed.candidates[0].analyzer.provider, "fake-model");
-  assert.equal(parsed.candidates[0].source_refs[0].path, eventsPath);
-}
-
-function testFakeAnalyzerProvider() {
-  const dir = tempDir();
-  const configPath = join(dir, "config.json");
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeFileSync(
-    configPath,
-    JSON.stringify({
-      candidate_analyzer: {
-        provider: "fake",
-        model: "fake",
-        fallback: "heuristic",
-      },
-    }),
-    "utf8"
-  );
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "fake-test",
-      payload: { prompt: "普通但用户想测试 fake analyzer" },
-    },
-    {
-      event: "Stop",
-      session_id: "fake-test",
-      payload: { last_assistant_message: "fake analyzer 应该生成候选。" },
-    },
-  ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-    env: { NOTE_DISTILL_CONFIG: configPath },
-  });
-  const candidates = readJsonl(candidatesPath);
-  assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].analyzer.provider, "fake");
-  assert.equal(candidates[0].type, "decision");
-}
-
-function testClaudeAnalyzerFallsBackToHeuristic() {
-  const dir = tempDir();
-  const configPath = join(dir, "config.json");
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeFileSync(
-    configPath,
-    JSON.stringify({
-      candidate_analyzer: {
-        provider: "claude",
-        model: "haiku",
-        fallback: "heuristic",
-      },
-    }),
-    "utf8"
-  );
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "claude-test",
-      payload: { prompt: "这个方案应该 fallback 到 heuristic" },
-    },
-    {
-      event: "Stop",
-      session_id: "claude-test",
-      payload: { last_assistant_message: "fallback 仍然生成候选。" },
-    },
-  ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-    env: { NOTE_DISTILL_CONFIG: configPath, PATH: "/nonexistent" },
-  });
-  const candidates = readJsonl(candidatesPath);
-  assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].analyzer.provider, "heuristic");
-  assert.equal(candidates[0].analyzer.fallback_from, "claude");
-  assert.ok(
-    ["claude_not_found", "claude_failed"].includes(
-      candidates[0].analyzer.reason
-    )
-  );
-}
-
-function testClaudeAnalyzerFallbackNoneReturnsEmpty() {
-  const dir = tempDir();
-  const configPath = join(dir, "config.json");
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeFileSync(
-    configPath,
-    JSON.stringify({
-      candidate_analyzer: {
-        provider: "claude",
-        model: "haiku",
-        fallback: "none",
-      },
-    }),
-    "utf8"
-  );
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "none-test",
-      payload: { prompt: "这个方案应该 fallback 到 none" },
-    },
-    {
-      event: "Stop",
-      session_id: "none-test",
-      payload: { last_assistant_message: "fallback=none 不应生成候选。" },
-    },
-  ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-    env: { NOTE_DISTILL_CONFIG: configPath, PATH: "/nonexistent" },
-  });
-  const candidates = readJsonl(candidatesPath);
-  assert.deepEqual(candidates, []);
 }
 
 function testMultiStopPreservesConsumedStatus() {
@@ -531,7 +306,7 @@ function testMultiStopPreservesConsumedStatus() {
       payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: { NOTE_DISTILL_CONFIG: configPath },
   });
   const firstRun = readJsonl(candidatesPath);
@@ -540,8 +315,8 @@ function testMultiStopPreservesConsumedStatus() {
   const candId = firstRun[0].candidate_id;
   // Mark consumed
   run(
-    nodeCli(
-      "mark-consumed",
+    skillCli(
+      "mark-consumed.ts",
       candidatesPath,
       "--ids",
       candId,
@@ -579,7 +354,7 @@ function testMultiStopPreservesConsumedStatus() {
       payload: { last_assistant_message: "这是另一个架构讨论的结果。" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: { NOTE_DISTILL_CONFIG: configPath },
   });
   const secondRun = readJsonl(candidatesPath);
@@ -591,208 +366,6 @@ function testMultiStopPreservesConsumedStatus() {
   assert.equal(consumedCand.consumed_at, afterMark[0].consumed_at);
   assert.equal(consumedCand.note_path, "/tmp/note.md");
   assert.equal(newCand.status, "pending");
-}
-
-function testCandidateExtractionFiltersByTopic() {
-  const dir = tempDir();
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeJsonl(candidatesPath, [
-    {
-      candidate_id: "jsonl",
-      status: "pending",
-      title: "JSONL 取舍",
-      summary: "讨论自己写 JSONL 与读取 Claude transcript 的取舍",
-      evidence: ["JSONL 取舍"],
-    },
-    {
-      candidate_id: "hook",
-      status: "pending",
-      title: "hook worker",
-      summary: "hook worker 架构",
-      evidence: ["hooks"],
-    },
-  ]);
-  const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout
-  );
-  assert.equal(extracted.topic_matched, true);
-  assert.deepEqual(extracted.selected_candidate_ids, ["jsonl"]);
-}
-
-function testCandidateExtractionReportsTopicMiss() {
-  const dir = tempDir();
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeJsonl(candidatesPath, [
-    {
-      candidate_id: "hook",
-      status: "pending",
-      title: "hook worker",
-      summary: "hook worker 架构",
-    },
-  ]);
-  const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--topic", "JSONL 取舍")).stdout
-  );
-  assert.equal(extracted.topic_matched, false);
-  assert.equal(extracted.should_check_event_window, true);
-  assert.deepEqual(extracted.candidates, []);
-}
-
-function testCandidateExtractionFiltersToCurrentNoteWindow() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeJsonl(eventsPath, [
-    { event: "UserPromptSubmit", payload: { prompt: "旧方案讨论" } },
-    { event: "UserPromptSubmit", payload: { prompt: "/note quick old" } },
-    { event: "UserPromptSubmit", payload: { prompt: "新方案讨论" } },
-    { event: "UserPromptSubmit", payload: { prompt: "/note deep new" } },
-  ]);
-  writeJsonl(candidatesPath, [
-    {
-      candidate_id: "old",
-      status: "pending",
-      range: { prompt_event_index: 0 },
-      title: "旧方案",
-    },
-    {
-      candidate_id: "new",
-      status: "pending",
-      range: { prompt_event_index: 2 },
-      title: "新方案",
-    },
-    {
-      candidate_id: "used",
-      status: "consumed",
-      range: { prompt_event_index: 2 },
-      title: "已用方案",
-    },
-  ]);
-  const extracted = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--events", eventsPath)).stdout
-  );
-  assert.equal(extracted.previous_note_index, 1);
-  assert.equal(extracted.current_note_index, 3);
-  assert.deepEqual(extracted.selected_candidate_ids, ["new"]);
-}
-
-function testCandidateSelectionModes() {
-  const dir = tempDir();
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeJsonl(candidatesPath, [
-    {
-      candidate_id: "first",
-      status: "pending",
-      type: "command",
-      range: { prompt_event_index: 1 },
-      title: "first",
-    },
-    {
-      candidate_id: "second",
-      status: "pending",
-      type: "bugfix",
-      range: { prompt_event_index: 2 },
-      title: "second",
-    },
-    {
-      candidate_id: "third",
-      status: "pending",
-      type: "decision",
-      range: { prompt_event_index: 3 },
-      title: "third",
-    },
-  ]);
-  assert.deepEqual(
-    JSON.parse(
-      run(
-        nodeCli(
-          "candidates",
-          candidatesPath,
-          "--selection",
-          "auto",
-          "--strategy",
-          "oldest"
-        )
-      ).stdout
-    ).selected_candidate_ids,
-    ["first"]
-  );
-  assert.deepEqual(
-    JSON.parse(
-      run(
-        nodeCli(
-          "candidates",
-          candidatesPath,
-          "--selection",
-          "auto",
-          "--strategy",
-          "newest"
-        )
-      ).stdout
-    ).selected_candidate_ids,
-    ["third"]
-  );
-  assert.deepEqual(
-    JSON.parse(
-      run(
-        nodeCli(
-          "candidates",
-          candidatesPath,
-          "--selection",
-          "auto",
-          "--strategy",
-          "priority"
-        )
-      ).stdout
-    ).selected_candidate_ids,
-    ["second"]
-  );
-  const pick = JSON.parse(
-    run(
-      nodeCli(
-        "candidates",
-        candidatesPath,
-        "--selection",
-        "pick",
-        "--max-options",
-        "2"
-      )
-    ).stdout
-  );
-  assert.deepEqual(pick.candidates, []);
-  assert.deepEqual(
-    pick.pick_options.map((option) => option.candidate_id),
-    ["first", "second"]
-  );
-  const all = JSON.parse(
-    run(nodeCli("candidates", candidatesPath, "--selection", "all")).stdout
-  );
-  assert.equal(all.experimental, true);
-  assert.deepEqual(all.selected_candidate_ids, ["first", "second", "third"]);
-}
-
-function testMarkCandidatesConsumed() {
-  const dir = tempDir();
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  writeJsonl(candidatesPath, [
-    { candidate_id: "a", status: "pending", title: "A" },
-    { candidate_id: "b", status: "pending", title: "B" },
-  ]);
-  run(
-    nodeCli(
-      "mark-consumed",
-      candidatesPath,
-      "--ids",
-      "a",
-      "--note-path",
-      "/tmp/note.md"
-    )
-  );
-  const records = readJsonl(candidatesPath);
-  assert.equal(records[0].status, "consumed");
-  assert.equal(records[0].note_path, "/tmp/note.md");
-  assert.ok(records[0].consumed_at);
-  assert.equal(records[1].status, "pending");
 }
 
 function testAnalyzePreservesPendingOnRerun() {
@@ -825,7 +398,7 @@ function testAnalyzePreservesPendingOnRerun() {
       payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: { NOTE_DISTILL_CONFIG: configPath },
   });
   const firstRun = readJsonl(candidatesPath);
@@ -846,7 +419,7 @@ function testAnalyzePreservesPendingOnRerun() {
       payload: { last_assistant_message: "hi there" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: { NOTE_DISTILL_CONFIG: configPath },
   });
   const secondRun = readJsonl(candidatesPath);
@@ -889,7 +462,7 @@ function testProjectConfigOverridesGlobal() {
       payload: { last_assistant_message: "world" },
     },
   ]);
-  run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
+  run(hookCli("analyze", eventsPath, "--output", candidatesPath), {
     env: { NOTE_DISTILL_CONFIG: globalConfigPath },
     cwd: dir,
   });
@@ -919,7 +492,7 @@ function testProjectConfigDeepMergesNestedObjects() {
     "utf8"
   );
   const merged = JSON.parse(
-    run(nodeCli("merge-config"), {
+    run(skillCli("merge-config.ts"), {
       env: { NOTE_DISTILL_CONFIG: globalConfigPath },
       cwd: dir,
     }).stdout
@@ -927,61 +500,6 @@ function testProjectConfigDeepMergesNestedObjects() {
   assert.equal(merged.candidate_analyzer.provider, "fake");
   assert.equal(merged.candidate_analyzer.model, "haiku");
   assert.equal(merged.candidate_analyzer.fallback, "heuristic");
-}
-
-function testAnalyzerLockSkipsWhenFreshLockExists() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  const lockPath = join(dir, "note_candidates.jsonl.lock");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "lock-test",
-      payload: { prompt: "方案讨论" },
-    },
-    {
-      event: "Stop",
-      session_id: "lock-test",
-      payload: { last_assistant_message: "方案结论。" },
-    },
-  ]);
-  writeFileSync(lockPath, String(Date.now()), "utf8");
-  const result = JSON.parse(
-    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-      env: heuristicConfigEnv(dir),
-      cwd: dir,
-    }).stdout
-  );
-  assert.equal(result.skipped, "locked");
-}
-
-function testAnalyzerBreaksStaleLockAndProceeds() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  const lockPath = join(dir, "note_candidates.jsonl.lock");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "stale-test",
-      payload: { prompt: "方案讨论" },
-    },
-    {
-      event: "Stop",
-      session_id: "stale-test",
-      payload: { last_assistant_message: "方案结论。" },
-    },
-  ]);
-  writeFileSync(lockPath, String(Date.now() - 120_000), "utf8");
-  const result = JSON.parse(
-    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-      env: heuristicConfigEnv(dir),
-      cwd: dir,
-    }).stdout
-  );
-  assert.ok(result.candidates > 0);
-  assert.ok(!existsSync(lockPath));
 }
 
 function testMergeConfigCommand() {
@@ -996,7 +514,7 @@ function testMergeConfigCommand() {
     "utf8"
   );
   const merged = JSON.parse(
-    run(nodeCli("merge-config"), {
+    run(skillCli("merge-config.ts"), {
       env: { NOTE_DISTILL_CONFIG: globalConfigPath },
       cwd: dir,
     }).stdout
@@ -1005,28 +523,235 @@ function testMergeConfigCommand() {
   assert.equal(merged.output_dir, "/tmp/global");
 }
 
-function testCollectorRedactsSecretKey() {
+function testMergeConfigIncludesEnabledField() {
   const dir = tempDir();
-  run(nodeCli("collect"), {
-    env: { NOTE_DISTILL_DATA_DIR: dir },
-    input: JSON.stringify({
-      hook_event_name: "UserPromptSubmit",
-      session_id: "secret-key-test",
-      cwd: "/tmp",
-      transcript_path: "/tmp/transcript.jsonl",
-      prompt: "SECRET_KEY=dontleakthis GITHUB_TOKEN=ghp_xxx PASSWORD: hunter2",
+  const globalConfigPath = join(dir, "global-config.json");
+  writeFileSync(
+    globalConfigPath,
+    JSON.stringify({
+      adapter: "local-markdown",
+      output_dir: dir,
+      candidate_analyzer: {
+        enabled: false,
+        provider: "heuristic",
+        model: "",
+        fallback: "heuristic",
+      },
     }),
-  });
-  const records = readJsonl(
-    join(dir, "sessions", "secret-key-test", "events.jsonl")
+    "utf8"
   );
-  assert.equal(records.length, 1);
-  const prompt = records[0].payload.prompt;
-  assert.equal(prompt.includes("dontleakthis"), false);
-  assert.equal(prompt.includes("[REDACTED]"), true);
+  const merged = JSON.parse(
+    run(skillCli("merge-config.ts"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(merged.candidate_analyzer.enabled, false);
 }
 
-// ---- validate-note.ts tests ----
+function testCandidateExtractionFiltersByTopic() {
+  const dir = tempDir();
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(candidatesPath, [
+    {
+      candidate_id: "jsonl",
+      status: "pending",
+      title: "JSONL 取舍",
+      summary: "讨论自己写 JSONL 与读取 Claude transcript 的取舍",
+      evidence: ["JSONL 取舍"],
+    },
+    {
+      candidate_id: "hook",
+      status: "pending",
+      title: "hook worker",
+      summary: "hook worker 架构",
+      evidence: ["hooks"],
+    },
+  ]);
+  const extracted = JSON.parse(
+    run(skillCli("candidates.ts", candidatesPath, "--topic", "JSONL 取舍"))
+      .stdout
+  );
+  assert.equal(extracted.topic_matched, true);
+  assert.deepEqual(extracted.selected_candidate_ids, ["jsonl"]);
+}
+
+function testCandidateExtractionReportsTopicMiss() {
+  const dir = tempDir();
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(candidatesPath, [
+    {
+      candidate_id: "hook",
+      status: "pending",
+      title: "hook worker",
+      summary: "hook worker 架构",
+    },
+  ]);
+  const extracted = JSON.parse(
+    run(skillCli("candidates.ts", candidatesPath, "--topic", "JSONL 取舍"))
+      .stdout
+  );
+  assert.equal(extracted.topic_matched, false);
+  assert.equal(extracted.should_check_event_window, true);
+  assert.deepEqual(extracted.candidates, []);
+}
+
+function testCandidateExtractionFiltersToCurrentNoteWindow() {
+  const dir = tempDir();
+  const eventsPath = join(dir, "events.jsonl");
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(eventsPath, [
+    { event: "UserPromptSubmit", payload: { prompt: "旧方案讨论" } },
+    { event: "UserPromptSubmit", payload: { prompt: "/note quick old" } },
+    { event: "UserPromptSubmit", payload: { prompt: "新方案讨论" } },
+    { event: "UserPromptSubmit", payload: { prompt: "/note deep new" } },
+  ]);
+  writeJsonl(candidatesPath, [
+    {
+      candidate_id: "old",
+      status: "pending",
+      range: { prompt_event_index: 0 },
+      title: "旧方案",
+    },
+    {
+      candidate_id: "new",
+      status: "pending",
+      range: { prompt_event_index: 2 },
+      title: "新方案",
+    },
+    {
+      candidate_id: "used",
+      status: "consumed",
+      range: { prompt_event_index: 2 },
+      title: "已用方案",
+    },
+  ]);
+  const extracted = JSON.parse(
+    run(skillCli("candidates.ts", candidatesPath, "--events", eventsPath))
+      .stdout
+  );
+  assert.equal(extracted.previous_note_index, 1);
+  assert.equal(extracted.current_note_index, 3);
+  assert.deepEqual(extracted.selected_candidate_ids, ["new"]);
+}
+
+function testCandidateSelectionModes() {
+  const dir = tempDir();
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(candidatesPath, [
+    {
+      candidate_id: "first",
+      status: "pending",
+      type: "command",
+      range: { prompt_event_index: 1 },
+      title: "first",
+    },
+    {
+      candidate_id: "second",
+      status: "pending",
+      type: "bugfix",
+      range: { prompt_event_index: 2 },
+      title: "second",
+    },
+    {
+      candidate_id: "third",
+      status: "pending",
+      type: "decision",
+      range: { prompt_event_index: 3 },
+      title: "third",
+    },
+  ]);
+  assert.deepEqual(
+    JSON.parse(
+      run(
+        skillCli(
+          "candidates.ts",
+          candidatesPath,
+          "--selection",
+          "auto",
+          "--strategy",
+          "oldest"
+        )
+      ).stdout
+    ).selected_candidate_ids,
+    ["first"]
+  );
+  assert.deepEqual(
+    JSON.parse(
+      run(
+        skillCli(
+          "candidates.ts",
+          candidatesPath,
+          "--selection",
+          "auto",
+          "--strategy",
+          "newest"
+        )
+      ).stdout
+    ).selected_candidate_ids,
+    ["third"]
+  );
+  assert.deepEqual(
+    JSON.parse(
+      run(
+        skillCli(
+          "candidates.ts",
+          candidatesPath,
+          "--selection",
+          "auto",
+          "--strategy",
+          "priority"
+        )
+      ).stdout
+    ).selected_candidate_ids,
+    ["second"]
+  );
+  const pick = JSON.parse(
+    run(
+      skillCli(
+        "candidates.ts",
+        candidatesPath,
+        "--selection",
+        "pick",
+        "--max-options",
+        "2"
+      )
+    ).stdout
+  );
+  assert.deepEqual(pick.candidates, []);
+  assert.deepEqual(
+    pick.pick_options.map((option) => option.candidate_id),
+    ["first", "second"]
+  );
+  const all = JSON.parse(
+    run(skillCli("candidates.ts", candidatesPath, "--selection", "all")).stdout
+  );
+  assert.equal(all.experimental, true);
+  assert.deepEqual(all.selected_candidate_ids, ["first", "second", "third"]);
+}
+
+function testMarkCandidatesConsumed() {
+  const dir = tempDir();
+  const candidatesPath = join(dir, "note_candidates.jsonl");
+  writeJsonl(candidatesPath, [
+    { candidate_id: "a", status: "pending", title: "A" },
+    { candidate_id: "b", status: "pending", title: "B" },
+  ]);
+  run(
+    skillCli(
+      "mark-consumed.ts",
+      candidatesPath,
+      "--ids",
+      "a",
+      "--note-path",
+      "/tmp/note.md"
+    )
+  );
+  const records = readJsonl(candidatesPath);
+  assert.equal(records[0].status, "consumed");
+  assert.equal(records[0].note_path, "/tmp/note.md");
+  assert.ok(records[0].consumed_at);
+  assert.equal(records[1].status, "pending");
+}
 
 function makeSimpleNote(frontmatter, body) {
   return `---\n${Object.entries(frontmatter)
@@ -1164,6 +889,7 @@ async function testValidateUnreplacedVariableInNote() {
 
 // Style-specific constraints (TIL title prefix, char limit) have been removed
 // from validate-note.ts — these are now enforced by the template itself.
+
 async function testValidateTilTitlePrefixNoLongerEnforced() {
   const tmp = mkdtempSync(join(tmpdir(), "nd-test-"));
   const tmplPath = join(tmp, "template.md");
@@ -1316,7 +1042,7 @@ function testFindSessionReturnsMatchingSession() {
     },
   ]);
   const result = JSON.parse(
-    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+    run(skillCli("find-session.ts", "--cwd", "/Users/test/my-project"), {
       env: { NOTE_DISTILL_DATA_DIR: dir },
     }).stdout
   );
@@ -1342,7 +1068,7 @@ function testFindSessionDetectsCodeBuddyPlatform() {
     },
   ]);
   const result = JSON.parse(
-    run(nodeCli("find-session", "--cwd", "/Users/test/wiki"), {
+    run(skillCli("find-session.ts", "--cwd", "/Users/test/wiki"), {
       env: { NOTE_DISTILL_DATA_DIR: dir },
     }).stdout
   );
@@ -1367,7 +1093,7 @@ function testFindSessionDetectsCodeBuddyOldFormat() {
     },
   ]);
   const result = JSON.parse(
-    run(nodeCli("find-session", "--cwd", "/Users/test/photo-skills"), {
+    run(skillCli("find-session.ts", "--cwd", "/Users/test/photo-skills"), {
       env: { NOTE_DISTILL_DATA_DIR: dir },
     }).stdout
   );
@@ -1391,7 +1117,7 @@ function testFindSessionReturnsNullWhenNoMatch() {
     },
   ]);
   const result = JSON.parse(
-    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+    run(skillCli("find-session.ts", "--cwd", "/Users/test/my-project"), {
       env: { NOTE_DISTILL_DATA_DIR: dir },
     }).stdout
   );
@@ -1428,7 +1154,7 @@ function testFindSessionReturnsNewestMatch() {
     },
   ]);
   const result = JSON.parse(
-    run(nodeCli("find-session", "--cwd", "/Users/test/my-project"), {
+    run(skillCli("find-session.ts", "--cwd", "/Users/test/my-project"), {
       env: { NOTE_DISTILL_DATA_DIR: dir },
     }).stdout
   );
@@ -1450,7 +1176,7 @@ function testTopicInfoFrontmatterWithBothFields() {
   makeTopicDir(
     dir,
     "test-topic",
-    '---\naliases: [tt, test]\nscope: 测试 scope 描述\n---\n\n# Test Topic\n\n记录标准：测试内容。'
+    "---\naliases: [tt, test]\nscope: 测试 scope 描述\n---\n\n# Test Topic\n\n记录标准：测试内容。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "test-topic", "--topics-dir", dir)).stdout
@@ -1468,7 +1194,7 @@ function testTopicInfoNoAliasesOnlyScope() {
   makeTopicDir(
     dir,
     "scope-only",
-    '---\nscope: 只有 scope 没有 aliases\n---\n\n# Scope Only\n\n记录标准：测试。'
+    "---\nscope: 只有 scope 没有 aliases\n---\n\n# Scope Only\n\n记录标准：测试。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "scope-only", "--topics-dir", dir)).stdout
@@ -1483,7 +1209,7 @@ function testTopicInfoNoScopeOnlyAliases() {
   makeTopicDir(
     dir,
     "alias-only",
-    '---\naliases: [ao]\n---\n\n# Alias Only\n\n记录标准：测试。'
+    "---\naliases: [ao]\n---\n\n# Alias Only\n\n记录标准：测试。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "alias-only", "--topics-dir", dir)).stdout
@@ -1495,11 +1221,7 @@ function testTopicInfoNoScopeOnlyAliases() {
 
 function testTopicInfoNoFrontmatter() {
   const dir = tempDir();
-  makeTopicDir(
-    dir,
-    "no-fm",
-    "# No Frontmatter\n\n记录标准：无 frontmatter。"
-  );
+  makeTopicDir(dir, "no-fm", "# No Frontmatter\n\n记录标准：无 frontmatter。");
   const result = JSON.parse(
     run(topicInfoCli("--name", "no-fm", "--topics-dir", dir)).stdout
   );
@@ -1514,7 +1236,7 @@ function testTopicInfoEmptyFrontmatter() {
   makeTopicDir(
     dir,
     "empty-fm",
-    '---\n---\n\n# Empty Frontmatter\n\n记录标准：空 frontmatter。'
+    "---\n---\n\n# Empty Frontmatter\n\n记录标准：空 frontmatter。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "empty-fm", "--topics-dir", dir)).stdout
@@ -1529,7 +1251,7 @@ function testTopicInfoAliasResolution() {
   makeTopicDir(
     dir,
     "real-topic",
-    '---\naliases: [rt, real]\nscope: Real topic scope\n---\n\n# Real Topic\n\n记录标准：测试。'
+    "---\naliases: [rt, real]\nscope: Real topic scope\n---\n\n# Real Topic\n\n记录标准：测试。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "rt", "--topics-dir", dir)).stdout
@@ -1544,7 +1266,7 @@ function testTopicInfoCanonicalNameMatch() {
   makeTopicDir(
     dir,
     "canon",
-    '---\naliases: [cn]\nscope: Canon test\n---\n\n# Canon\n\n记录标准：测试。'
+    "---\naliases: [cn]\nscope: Canon test\n---\n\n# Canon\n\n记录标准：测试。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "canon", "--topics-dir", dir)).stdout
@@ -1558,7 +1280,7 @@ function testTopicInfoNotFound() {
   makeTopicDir(
     dir,
     "exists",
-    '---\nscope: 存在的 topic\n---\n\n# Exists\n\n记录标准：测试。'
+    "---\nscope: 存在的 topic\n---\n\n# Exists\n\n记录标准：测试。"
   );
   const result = JSON.parse(
     run(topicInfoCli("--name", "nonexistent", "--topics-dir", dir)).stdout
@@ -1569,25 +1291,30 @@ function testTopicInfoNotFound() {
 
 function testTopicInfoListAllSorted() {
   const dir = tempDir();
-  makeTopicDir(dir, "b-topic", '---\nscope: B\n---\n\n# B');
-  makeTopicDir(dir, "a-topic", '---\nscope: A\n---\n\n# A');
-  makeTopicDir(dir, "c-topic", '---\nscope: C\n---\n\n# C');
-  const result = JSON.parse(
-    run(topicInfoCli("--topics-dir", dir)).stdout
-  );
+  makeTopicDir(dir, "b-topic", "---\nscope: B\n---\n\n# B");
+  makeTopicDir(dir, "a-topic", "---\nscope: A\n---\n\n# A");
+  makeTopicDir(dir, "c-topic", "---\nscope: C\n---\n\n# C");
+  const result = JSON.parse(run(topicInfoCli("--topics-dir", dir)).stdout);
   // 3 user topics + built-in topics (scanned unconditionally)
   assert.ok(result.topics.length >= 3);
   // All topics sorted by canonical name
   const names = result.topics.map((t) => t.canonical);
   const sortedNames = [...names].sort();
-  assert.deepEqual(names, sortedNames, "topics should be sorted by canonical name");
+  assert.deepEqual(
+    names,
+    sortedNames,
+    "topics should be sorted by canonical name"
+  );
   // Verify our 3 test topics exist
   assert.ok(names.includes("a-topic"));
   assert.ok(names.includes("b-topic"));
   assert.ok(names.includes("c-topic"));
   // Verify built-in topics are also scanned
   for (const name of ["adr", "design", "investigation", "til"]) {
-    assert.ok(names.includes(name), `built-in topic "${name}" should be in list`);
+    assert.ok(
+      names.includes(name),
+      `built-in topic "${name}" should be in list`
+    );
   }
 }
 
@@ -1597,7 +1324,7 @@ function testTopicInfoTemplatePathNullWhenMissing() {
   mkdirSync(topicDir, { recursive: true });
   writeFileSync(
     join(topicDir, "prompt.md"),
-    '---\nscope: 没有 template.md\n---\n\n# No Template\n\n记录标准：测试。',
+    "---\nscope: 没有 template.md\n---\n\n# No Template\n\n记录标准：测试。",
     "utf8"
   );
   // No template.md created
@@ -1612,7 +1339,11 @@ function testTopicInfoShadowing() {
   // --topics-dir topics shadow built-in topics of the same canonical name
   const userDir = tempDir();
   // Create user adr with aliases [arch] — should shadow built-in adr's aliases
-  makeTopicDir(userDir, "adr", '---\naliases: [arch, override]\nscope: User-defined scope\n---\n\n# User ADR\n\n记录标准：用户定义。');
+  makeTopicDir(
+    userDir,
+    "adr",
+    "---\naliases: [arch, override]\nscope: User-defined scope\n---\n\n# User ADR\n\n记录标准：用户定义。"
+  );
   const result = JSON.parse(
     run(topicInfoCli("--name", "arch", "--topics-dir", userDir), {
       cwd: userDir,
@@ -1640,249 +1371,12 @@ function testTopicInfoScopePreservesRoutingHints() {
   assert.ok(result.scope.includes("→investigation"));
 }
 
-function testParseModelOutputRepairsTruncatedJson() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "trunc-test",
-      payload: { prompt: "讨论架构" },
-    },
-    {
-      event: "Stop",
-      session_id: "trunc-test",
-      payload: { last_assistant_message: "结论" },
-    },
-  ]);
-  // Simulate truncated JSON: missing closing brackets
-  const truncated =
-    '{"candidates":[{"type":"architecture","title":"微服务拆分","summary":"按领域拆分服务","claim":"降低耦合","why":"独立部署","confidence":"high","event_range":{"start_index":0,"end_index":1}';
-  const modelOutput = join(dir, "model-output.json");
-  writeFileSync(modelOutput, truncated, "utf8");
-  const parsed = JSON.parse(
-    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
-      .stdout
-  );
-  assert.equal(parsed.repaired, true);
-  assert.equal(parsed.candidates.length, 1);
-  assert.equal(parsed.candidates[0].type, "architecture");
-  assert.equal(parsed.candidates[0].analyzer.repaired, undefined);
-}
-
-function testParseModelOutputNoRepairOnValidJson() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "valid-test",
-      payload: { prompt: "讨论方案" },
-    },
-    {
-      event: "Stop",
-      session_id: "valid-test",
-      payload: { last_assistant_message: "结论" },
-    },
-  ]);
-  const modelOutput = join(dir, "model-output.json");
-  writeFileSync(
-    modelOutput,
-    JSON.stringify({
-      candidates: [
-        {
-          type: "decision",
-          title: "选择方案A",
-          summary: "方案A更适合",
-          claim: "更灵活",
-          why: "可扩展",
-          confidence: "medium",
-          event_range: { start_index: 0, end_index: 1 },
-        },
-      ],
-    }),
-    "utf8"
-  );
-  const parsed = JSON.parse(
-    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
-      .stdout
-  );
-  assert.equal(parsed.repaired, false);
-  assert.equal(parsed.candidates.length, 1);
-}
-
-function testParseModelOutputStripsMarkdownCodeBlock() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "md-test",
-      payload: { prompt: "讨论修复" },
-    },
-    {
-      event: "Stop",
-      session_id: "md-test",
-      payload: { last_assistant_message: "结论" },
-    },
-  ]);
-  const wrapped =
-    'Here is the analysis:\n```json\n{"candidates":[{"type":"bugfix","title":"修复空指针","summary":"加了null检查","claim":"不再崩溃","why":"用户反馈","confidence":"high","event_range":{"start_index":0,"end_index":1}}]}\n```\nDone.';
-  const modelOutput = join(dir, "model-output.json");
-  writeFileSync(modelOutput, wrapped, "utf8");
-  const parsed = JSON.parse(
-    run(nodeCli("parse-model-output", modelOutput, "--events", eventsPath))
-      .stdout
-  );
-  assert.equal(parsed.candidates.length, 1);
-  assert.equal(parsed.candidates[0].type, "bugfix");
-  assert.equal(parsed.repaired, false);
-}
-
-function testCollectorSkipsWhenAnalyzerChild() {
-  // When NOTE_DISTILL_ANALYZER_CHILD=1, the collector should skip all work
-  // (anti-recursion guard) but still return the standard hook response.
-  const dir = tempDir();
-  const result = run(nodeCli("collect"), {
-    env: {
-      NOTE_DISTILL_DATA_DIR: dir,
-      NOTE_DISTILL_ANALYZER_CHILD: "1",
-    },
-    input: JSON.stringify({
-      hook_event_name: "UserPromptSubmit",
-      session_id: "child-guard-test",
-      cwd: "/tmp",
-      transcript_path: "/tmp/transcript.jsonl",
-      prompt: "this should be skipped",
-    }),
-  });
-  // Hook response is normal
-  assert.equal(JSON.parse(result.stdout).continue, true);
-  // No events.jsonl written
-  assert.equal(
-    existsSync(join(dir, "sessions", "child-guard-test", "events.jsonl")),
-    false
-  );
-}
-
-function testAnalyzerDisabledSkipsCandidateExtraction() {
-  // When candidate_analyzer.enabled=false, analyze command should produce
-  // zero candidates regardless of event content.
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  const configPath = join(dir, "config.json");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "disabled-test",
-      transcript_path: "/tmp/transcript.jsonl",
-      payload: { prompt: "这个方案应该用 hook 采集事件窗口" },
-    },
-    {
-      event: "Stop",
-      session_id: "disabled-test",
-      transcript_path: "/tmp/transcript.jsonl",
-      payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
-    },
-  ]);
-  writeFileSync(
-    configPath,
-    JSON.stringify({
-      candidate_analyzer: {
-        enabled: false,
-        provider: "heuristic",
-        model: "",
-        fallback: "heuristic",
-      },
-    }),
-    "utf8"
-  );
-  const analyzeResult = JSON.parse(
-    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-      env: { NOTE_DISTILL_CONFIG: configPath },
-    }).stdout
-  );
-  assert.equal(analyzeResult.skipped, "disabled");
-  assert.equal(analyzeResult.candidates, 0);
-  // No candidates file written
-  assert.equal(existsSync(candidatesPath), false);
-}
-
-function testMergeConfigIncludesEnabledField() {
-  const dir = tempDir();
-  const globalConfigPath = join(dir, "global-config.json");
-  writeFileSync(
-    globalConfigPath,
-    JSON.stringify({
-      adapter: "local-markdown",
-      output_dir: dir,
-      candidate_analyzer: {
-        enabled: false,
-        provider: "heuristic",
-        model: "",
-        fallback: "heuristic",
-      },
-    }),
-    "utf8"
-  );
-  const merged = JSON.parse(
-    run(nodeCli("merge-config"), {
-      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
-    }).stdout
-  );
-  assert.equal(merged.candidate_analyzer.enabled, false);
-}
-
-function testAnalyzerDisabledViaEnvVar() {
-  const dir = tempDir();
-  const eventsPath = join(dir, "events.jsonl");
-  const candidatesPath = join(dir, "note_candidates.jsonl");
-  const configPath = join(dir, "config.json");
-  writeJsonl(eventsPath, [
-    {
-      event: "UserPromptSubmit",
-      session_id: "env-disable-test",
-      transcript_path: "/tmp/transcript.jsonl",
-      payload: { prompt: "这个方案应该用 hook 采集事件窗口" },
-    },
-    {
-      event: "Stop",
-      session_id: "env-disable-test",
-      transcript_path: "/tmp/transcript.jsonl",
-      payload: { last_assistant_message: "方案：用 hooks 写 events.jsonl。" },
-    },
-  ]);
-  // Config has enabled=true (default), but env var overrides it
-  writeFileSync(
-    configPath,
-    JSON.stringify({
-      candidate_analyzer: {
-        provider: "heuristic",
-        model: "",
-        fallback: "heuristic",
-      },
-    }),
-    "utf8"
-  );
-  const analyzeResult = JSON.parse(
-    run(nodeCli("analyze", eventsPath, "--output", candidatesPath), {
-      env: {
-        NOTE_DISTILL_CONFIG: configPath,
-        NOTE_DISTILL_ANALYZER_ENABLED: "false",
-      },
-    }).stdout
-  );
-  assert.equal(analyzeResult.skipped, "disabled");
-  assert.equal(analyzeResult.candidates, 0);
-}
-
 function testConfigExampleMatchesHookDefaults() {
   // Ensure config.example.json (human-readable, with _comment fields) stays in
   // sync with the defaults the hook actually uses at runtime.  The hook now
   // reads config.example.json as its default base, so merge-config with no
   // user config should produce the same structure (minus _comment fields).
-  const examplePath = join(ROOT, "..", "skills", "note", "config.example.json");
+  const examplePath = join(ROOT, "..", "config.example.json");
   const raw = JSON.parse(readFileSync(examplePath, "utf8"));
   // Strip _comment / _xxx annotation keys
   function stripComments(obj) {
@@ -1902,7 +1396,7 @@ function testConfigExampleMatchesHookDefaults() {
   // Read hook defaults via merge-config with no user config (empty tmp dir)
   const dir = tempDir();
   const merged = JSON.parse(
-    run(nodeCli("merge-config"), {
+    run(skillCli("merge-config.ts"), {
       env: { NOTE_DISTILL_CONFIG: join(dir, "nonexistent.json") },
       cwd: dir,
     }).stdout
@@ -1930,34 +1424,18 @@ function testConfigExampleMatchesHookDefaults() {
 }
 
 const tests = [
-  testCollectorSkipsWhenAnalyzerChild,
-  testAnalyzerDisabledSkipsCandidateExtraction,
-  testAnalyzerDisabledViaEnvVar,
-  testMergeConfigIncludesEnabledField,
-  testCollectorRecordsAndRedacts,
-  testCollectorFailOpenOnBadJson,
-  testWrapperInvokesCollectorAndAnalyzer,
   testExtractNoteWindow,
   testWindowReportsPartialCoverageWhenHookJoinedMidSession,
   testWindowReportsEmptyCoverageWhenNoEvents,
   testCandidatesCommandSurfacesCoverage,
   testAnalyzerAndCandidateExtraction,
   testContextReadsCandidateSourceRefs,
-  testModelJsonParserFixture,
-  testParseModelOutputRepairsTruncatedJson,
-  testParseModelOutputNoRepairOnValidJson,
-  testParseModelOutputStripsMarkdownCodeBlock,
-  testFakeAnalyzerProvider,
-  testClaudeAnalyzerFallsBackToHeuristic,
-  testClaudeAnalyzerFallbackNoneReturnsEmpty,
   testMultiStopPreservesConsumedStatus,
   testAnalyzePreservesPendingOnRerun,
   testProjectConfigOverridesGlobal,
   testProjectConfigDeepMergesNestedObjects,
-  testAnalyzerLockSkipsWhenFreshLockExists,
-  testAnalyzerBreaksStaleLockAndProceeds,
   testMergeConfigCommand,
-  testCollectorRedactsSecretKey,
+  testMergeConfigIncludesEnabledField,
   testCandidateExtractionFiltersByTopic,
   testCandidateExtractionReportsTopicMiss,
   testCandidateExtractionFiltersToCurrentNoteWindow,

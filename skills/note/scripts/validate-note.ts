@@ -2,7 +2,7 @@
  * validate-note.ts — 校验生成的笔记是否符合模板定义。
  *
  * 用法:
- *   node --experimental-strip-types hooks/validate-note.ts <note.md> \
+ *   node --experimental-strip-types skills/note/scripts/validate-note.ts <note.md> \
  *     --template <template.md>
  *
  * 校验规则:

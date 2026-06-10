@@ -72,7 +72,9 @@ function scanTopics(topicsDirs: string[]): TopicMeta[] {
     }
   }
 
-  return [...seen.values()].sort((a, b) => a.canonical.localeCompare(b.canonical));
+  return [...seen.values()].sort((a, b) =>
+    a.canonical.localeCompare(b.canonical)
+  );
 }
 
 function parseOptions(
@@ -118,7 +120,9 @@ function commandTopicInfo(args: string[]): number {
   }
   const parsed = parseOptions(args, ["name", "topics-dir"]);
   if (parsed.error) {
-    process.stderr.write("usage: topic-info.ts [--name <name>] [--topics-dir <path>]\n");
+    process.stderr.write(
+      "usage: topic-info.ts [--name <name>] [--topics-dir <path>]\n"
+    );
     return 2;
   }
   const searchDirs = [

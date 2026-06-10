@@ -52,7 +52,7 @@
 
 **素材优先级**：candidates > event window > EVENT_LOG_PATH。高优先级素材为主要写作依据，低优先级仅用于消歧、验证和补充背景，不得重新选择范围外的高价值内容。
 
-**source_refs**：若候选词的 `source_refs` 存在，可运行 `node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts context <candidate-json-path>` 读取局部上下文。
+**source_refs**：若候选词的 `source_refs` 存在，可运行 `node --experimental-strip-types {SKILL_DIR}/scripts/context.ts <candidate-json-path>` 读取局部上下文。
 
 **Topic Override**：`TOPIC_HINT` 非空时是最高优先级内容选择约束。只记录与之相关的内容。candidates、event window、fallback 都找不到时，回报"未发现与 <TOPIC_HINT> 相关的内容"。
 
@@ -82,7 +82,7 @@
 ## 3. 校验
 
 ```bash
-node --experimental-strip-types {SKILL_DIR}/../../hooks/validate-note.ts <note-file> --template <template-file>
+node --experimental-strip-types {SKILL_DIR}/scripts/validate-note.ts <note-file> --template <template-file>
 ```
 PASS → 继续。WARN → 自行判断。FAIL → 修改重试 ≤3 轮。
 
@@ -110,7 +110,7 @@ PASS → 继续。WARN → 自行判断。FAIL → 修改重试 ≤3 轮。
 1. 收集 candidate IDs（优先 `SELECTED_CANDIDATE_IDS`，否则取 candidates 命令输出中的 selected IDs）
 2. 运行：
 ```bash
-node --experimental-strip-types {SKILL_DIR}/../../hooks/note_distill_hook.ts mark-consumed <CANDIDATE_LOG_PATH> --ids <csv> --note-path <path>
+node --experimental-strip-types {SKILL_DIR}/scripts/mark-consumed.ts <CANDIDATE_LOG_PATH> --ids <csv> --note-path <path>
 ```
 标记失败不阻止完成，但回报中说明。
 

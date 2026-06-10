@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `parse-model-output` command output now includes a `repaired` boolean field indicating whether the input JSON was repaired.
 - `findExecutable` now uses `path.delimiter` instead of hardcoded `:` for PATH splitting, improving Windows compatibility.
 
+- **Refactor**: Migrated 6 runtime commands + `validate-note.ts` from `hooks/` to `skills/note/scripts/`:
+  `merge-config`, `find-session`, `window`, `candidates`, `context`, `mark-consumed`, `validate-note`.
+  Extracted shared functions to `lib/nd-common.ts`.
+  `hooks/note_distill_hook.ts` reduced from 1465 to 876 lines, retaining only `collect` + `analyze` + `parse-model-output`.
+  Split monolithic test file into `hooks/test_hooks.mjs` (16 tests) + `skills/note/scripts/test_skills.mjs` (41 tests).
+  Zero behavioral change — all 57 tests pass across both test suites.
+
 ### Added
 
 - Anti-recursion guard: `commandCollect` checks `NOTE_DISTILL_ANALYZER_CHILD=1` env var and skips all work if set, preventing infinite hook→analyzer→hook loops.

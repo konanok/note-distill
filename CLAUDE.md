@@ -4,13 +4,13 @@ This file is read by Claude Code (as `CLAUDE.md`), CodeBuddy/Codex/Cursor (as `A
 
 ## Project overview
 
-note-distill is a Claude Code plugin that spawns a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. No build step, no linter, no general test framework — but `hooks/test_note_distill_hook.mjs` is a hand-rolled integration test runner for the hook pipeline.
+note-distill is a Claude Code plugin that spawns a background subagent to distill technical discussions into structured notes. It supports multiple output targets (local-markdown, obsidian) and note topics; v0.0.1. Invoked via `/note [<topic>] [描述]`. No build step, no linter, no general test framework — but `hooks/test_hooks.mjs` and `skills/note/scripts/test_skills.mjs` are hand-rolled integration test runners for the hook pipeline and skill commands respectively.
 
 ## Hard boundaries (read first)
 
 - **Main agent never summarizes or distills** — it only parses args, reads config, runs candidate/window helpers, and spawns the subagent. All writing work happens in the subagent.
 - **Never hardcode `{SKILL_DIR}`** — always inject from the Skill tool's "Base directory for this skill" output. The plugin may be installed anywhere.
-- **Never hand-merge global + project config** — always invoke `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` for the single source of truth.
+- **Never hand-merge global + project config** — always invoke `node --experimental-strip-types skills/note/scripts/merge-config.ts` for the single source of truth.
 - **`docs/` is gitignored** — do not add user-facing docs there expecting them to ship with the plugin.
 - **Zero runtime dependencies** — the project runs on `node --experimental-strip-types` with no npm packages. Adding any npm dependency (e.g. TOML/JSONC parser) is a breaking change requiring version bump + migration plan.
 
@@ -72,19 +72,28 @@ Hooks are triggered via `hooks/hooks.json`, which invokes the cross-platform wra
 
 ### Commands
 
-All via `node --experimental-strip-types hooks/note_distill_hook.ts <command>`:
+Hook pipeline (still in `hooks/note_distill_hook.ts`):
 
 | Command | Purpose |
 |---|---|
 | `collect` | Reads hook event from stdin, appends to `events.jsonl`. On Stop, spawns async `analyze`. |
 | `analyze <events.jsonl> [--output <path>]` | Runs analyzer (heuristic / claude / fake) over events, writes candidates. |
-| `window <events.jsonl>` | Extracts the event range between the last two `/note` commands. Output includes `coverage: full\|partial\|empty` so the main agent can decide primary vs fallback. |
-| `candidates <note_candidates.jsonl> [--events <events.jsonl>] [--topic <text>] [--selection auto\|pick\|all] [--strategy oldest\|newest\|priority]` | Filters pending candidates by window + topic, selects per strategy. Output also includes `coverage` (mirrors `window`). |
-| `context <candidate.json>` | Reads `source_refs` from a candidate and returns the referenced event range. |
-| `mark-consumed <note_candidates.jsonl> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
 | `parse-model-output <model-output.json> --events <events.jsonl>` | Parses LLM analyzer output into normalized candidates. |
-| `merge-config` | Outputs the merged (global + project) config as JSON. Used by the subagent to get a single source of truth. |
-| `find-session [--cwd <dir>]` | Scans session events to locate current session by matching cwd. Returns `{ session_id, platform }`. |
+
+Skill runtime commands (migrated to `skills/note/scripts/`):
+
+| Script | Purpose |
+|---|---|
+| `merge-config.ts` | Outputs the merged (global + project) config as JSON. |
+| `find-session.ts --cwd <dir>` | Scans session events to locate current session by matching cwd. |
+| `window.ts <events.jsonl>` | Extracts the event range between the last two `/note` commands. |
+| `candidates.ts <note_candidates.jsonl> [...]` | Filters pending candidates by window + topic, selects per strategy. |
+| `context.ts <candidate.json>` | Reads `source_refs` from a candidate and returns the referenced event range. |
+| `mark-consumed.ts <note_candidates.jsonl> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
+| `validate-note.ts <note.md> --template <tpl>` | Validates note structure, frontmatter, and template variables. |
+| `topic-info.ts [--name <name>] [--topics-dir <path>]` | Topic metadata queries (alias resolution, scope listing). |
+
+Shared module: `lib/nd-common.ts` — functions shared between hooks and skills (config loading, jsonl I/O, event helpers, CLI parsing, platform detection).
 
 ### Analyzer providers
 
@@ -115,9 +124,10 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 - **No build step** — all files are Markdown or JSON interpreted at runtime. Edit and save; changes take effect immediately (except SKILL.md frontmatter name/description changes, which need `/reload-plugins`).
 - **Test without installing:** `claude --plugin-dir ~/Projects/Github/note-distill`
 - **Install as plugin (dev):** `/plugin install ~/Projects/Github/note-distill`
-- **Run hook tests:** `node --experimental-strip-types hooks/test_note_distill_hook.mjs` (covers event collection, redaction, candidate pipeline, selection, context, and consumption)
+- **Run hook tests:** `node --experimental-strip-types hooks/test_hooks.mjs` (covers event collection, redaction, analyzer locking, model output parsing)
+- **Run skill tests:** `node --experimental-strip-types skills/note/scripts/test_skills.mjs` (covers config merge, find-session, window, candidates, context, mark-consumed, validate-note, topic-info)
 - **Run a single test:** pipe subset of test data through the CLI — e.g. `echo '{"event":"..."}' | node --experimental-strip-types hooks/note_distill_hook.ts collect`
-- **Validate a note manually:** `node --experimental-strip-types hooks/validate-note.ts <note.md> --template <template.md>` (exit 0 = PASS, 1 = FAIL)
+- **Validate a note manually:** `node --experimental-strip-types skills/note/scripts/validate-note.ts <note.md> --template <template.md>` (exit 0 = PASS, 1 = FAIL)
 
 ## Key conventions
 
@@ -126,7 +136,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 - **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types {SKILL_DIR}/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
 - **Topic routing** (TOPIC=auto): The subagent uses scope-based matching as the primary routing mechanism — compares conversation content against each topic's `scope` field to find the best match. Candidate type (from hook analyzer) serves as an auxiliary signal only, not the sole routing determinant. Alias resolution: project-level aliases > user-level > built-in; same-level conflicts are undefined.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
-- **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` — never manually merge the two files. Example template: `skills/note/config.example.json`.
+- **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types skills/note/scripts/merge-config.ts` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
 - **Output targets**: Controlled via config `adapter` + `link_style` fields. `local-markdown` → `output_dir`, `[text](url)` links. `obsidian` → `obsidian_vault_path`, `[[wikilink]]` links. Extend via `hooks/write-<adapter>.ts` script.
 - **All `.md` files use LF line endings**. Hook `.ts`/`.mjs` files use LF.
@@ -143,10 +153,18 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 | `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |
 | `topics/<name>/template.md` | Complete note skeleton (frontmatter + sections + {{variable}} placeholders) | Writing philosophy (now in prompt.md) |
 | `hooks/hooks.json` | Hook trigger registration (UserPromptSubmit, Stop) | Subagent logic |
-| `hooks/note_distill_hook.ts` | Event collection, candidate analysis, selection, consumption | Note writing |
-| `hooks/validate-note.ts` | Section structure, frontmatter, variable validation | Note generation |
+| `hooks/note_distill_hook.ts` | Event collection, candidate analysis (analyze/parse-model-output) | Note writing |
+| `lib/nd-common.ts` | Shared functions: config loading, jsonl I/O, event helpers, CLI parsing, platform detection | — |
+| `skills/note/scripts/merge-config.ts` | Merged config output | — |
+| `skills/note/scripts/find-session.ts` | Session discovery by cwd | — |
+| `skills/note/scripts/window.ts` | Event window extraction | — |
+| `skills/note/scripts/candidates.ts` | Candidate selection and filtering | — |
+| `skills/note/scripts/context.ts` | Read event range from candidate source_refs | — |
+| `skills/note/scripts/mark-consumed.ts` | Mark candidates as consumed | — |
+| `skills/note/scripts/validate-note.ts` | Section structure, frontmatter, variable validation | Note generation |
 | `hooks/run-hook.cmd` | Cross-platform hook wrapper | — |
-| `hooks/test_note_distill_hook.mjs` | Hook integration tests | — |
+| `hooks/test_hooks.mjs` | Hook pipeline integration tests | — |
+| `skills/note/scripts/test_skills.mjs` | Skill command integration tests | — |
 | `skills/note-config/SKILL.md` | Initialize user config and topics | Note writing |
 | `skills/note-check/SKILL.md` | Validate user configuration | Note writing |
 
@@ -159,7 +177,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ### Automated (hook pipeline)
 
 ```bash
-node --experimental-strip-types hooks/test_note_distill_hook.mjs
+node --experimental-strip-types hooks/test_hooks.mjs && node --experimental-strip-types skills/note/scripts/test_skills.mjs
 ```
 
 Covers: event collector redaction, fail-open on bad JSON, full wrapper→collector→analyzer pipeline, event window extraction, candidate selection (oldest/newest/priority/pick/all), topic filtering, source_refs context reading, model output parsing, fake analyzer, Claude→heuristic fallback, project config merge, analyzer locking (fresh + stale), merge-config command, consumed marking, and template validation (section/frontmatter/variable/code block/missing file).
