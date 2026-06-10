@@ -1,7 +1,7 @@
 ---
 name: note
-description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、design，支持用户自定义 topic。
-argument-hint: [til|adr|design] [可选描述]
+description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、design、investigation，支持用户自定义 topic。
+argument-hint: [til|adr|design|investigation] [可选描述]
 ---
 
 用户执行了 `/note $ARGUMENTS`。
@@ -119,7 +119,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
 5. 确定 topic：
    - TOPIC 非 `auto` → 直接使用，按优先级查找 topic 目录（项目 .note-distill/topics/ > 用户 topics_dir > 出厂 SKILL_DIR/topics/），读 prompt.md 和 template.md
    - TOPIC=`auto` → 自动判断：
-     若有候选词且候选词含 `type` 字段，用作初始路由提示：decision → 优先检查 adr；architecture → 优先检查 design；gotcha/howto/command → 优先检查 til；bugfix/research → 需结合内容进一步判断
+     若有候选词且候选词含 `type` 字段，用作初始路由提示：decision → 优先检查 adr；architecture → 优先检查 design；bugfix → 优先检查 investigation；gotcha/howto/command → 优先检查 til；research → 需结合内容进一步判断
      a. 枚举所有可用 topic 目录，读每个 topic 的 prompt.md **开头部分**（到"不该记"/"不记录"段结束为止——即 scope 判断区域，通常前 20 行）
      b. 对照素材内容，逐个评估每个 topic 的"该记什么"/"不该记"标准
      c. 选择匹配度最高的 topic（唯一匹配 → 直接用；多个匹配 → 选条件满足最充分的；均不匹配 → 回报"未发现值得记录的内容，未生成笔记。"并结束）

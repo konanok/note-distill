@@ -8,9 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+
 - `design` topic: architecture + design rationale notes, complementing TIL (atomic knowledge) and ADR (decision records with ≥2 alternatives). 6-section template: 概览 → 组件概览 → 组件详述 → 数据流 → 关键设计决策 → 已知约束与未决问题. Supports ADR cross-reference in the key design decisions section.
+- `investigation` topic: technical debugging / troubleshooting reports. Records the full flow from symptom → reproduce → root cause → fix → verify → remaining risks. 5 Whys root cause chain + multi-option fix comparison. Optional sections (not in template, inserted on demand in investigation order): 复现方法 (after symptom), 验证方案 (after fix), 遗留风险与待办 (after verify). `follow-up` frontmatter field for tracking post-investigation actions.
 
 ### Changed
+
 - Subagent prompt refactored: main agent no longer injects JSON blobs (NOTE_CANDIDATES, NOTE_EVENT_WINDOW, PLATFORM, SESSION_ID, EVENT_LOG_PATH, CANDIDATE_LOG_PATH). Instead, subagent discovers platform/session/paths itself and runs candidates/window commands to get data. Main agent only injects scalar parameters (TOPIC, TOPIC_HINT, SKILL_DIR, COVERAGE, SOURCE_PATH, SELECTED_CANDIDATE_IDS). This makes spawning more reliable — LLM-based main agents often failed to properly inject large JSON outputs.
 - Path selection expanded from 3-state to 4-state: COVERAGE=`full` without candidates/window now also goes fallback (subagent reads events.jsonl directly), instead of being lumped with the primary path.
 - Removed fork subagent dependency (the `CLAUDE_CODE_FORK_SUBAGENT=1` requirement from the previous fallback mechanism is no longer needed). Fallback path now reads events.jsonl directly (platform-agnostic, no prompt injection required). SKILL.md, CLAUDE.md, and README.md updated accordingly. The "structured warning about fork inheritance" from previous versions is also removed.
@@ -21,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `findExecutable` now uses `path.delimiter` instead of hardcoded `:` for PATH splitting, improving Windows compatibility.
 
 ### Added
+
 - Anti-recursion guard: `commandCollect` checks `NOTE_DISTILL_ANALYZER_CHILD=1` env var and skips all work if set, preventing infinite hook→analyzer→hook loops.
 - `maybeStartAnalyzer` and `buildCliCandidates` now inject `NOTE_DISTILL_ANALYZER_CHILD=1` into child process environments so their hook triggers are no-ops.
 - `buildCliCandidates` passes `--bare` flag to `claude` CLI to skip hook loading entirely (Claude Code bare mode).
@@ -37,9 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tests: `testParseModelOutputRepairsTruncatedJson`, `testParseModelOutputNoRepairOnValidJson`, `testParseModelOutputStripsMarkdownCodeBlock` covering the new pure functions.
 
 ### Changed
+
 - `{{date}}` 模板变量重命名为 `{{datetime}}`，frontmatter 中 `created`/`updated` 格式从 `YYYY-MM-DD` 改为 `YYYY-MM-DD HH:MM:SS`。移除 `date +%Y-%m-%d` 等平台特定命令硬编码，改为平台无关获取方式。输出文件名中的 `{date}` 仍为 `YYYY-MM-DD`。
 
 ### Added
+
 - Hook coverage detection: `window` and `candidates` commands now report a `coverage` field (`full` / `partial` / `empty`) so the main agent can decide between primary and fallback paths reliably. `partial` is triggered when the first `UserPromptSubmit` in `events.jsonl` is already a `/note` invocation — meaning the hook joined mid-session (typically: user had a long conversation before installing the plugin) and the captured fragment is not a trustworthy representation of session content.
 - Fallback path is now actively taken on `coverage=partial`, not just `coverage=empty`. Main agent forces `NOTE_CANDIDATES` / `NOTE_EVENT_WINDOW` to `unavailable` to prevent the subagent from mistaking the partial fragment for the full picture. Subagent reads the main session history directly (requires `CLAUDE_CODE_FORK_SUBAGENT=1`).
 - Subagent spawn prompt now contains a dedicated **Fallback 模式专用指令** block that activates when `SOURCE_PATH=fallback`: explicit guidance on reading main session history, a structured warning to surface when fork inheritance isn't enabled, and instruction to skip `mark-consumed` (no candidate IDs to mark).
@@ -47,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - SKILL.md PLATFORM/SESSION_ID detection now uses a three-level fallback: (1) `$CLAUDE_CODE_SESSION_ID` → `claude-code` + session ID, (2) `find-session --cwd <pwd>` → session ID + platform from hook data, (3) `unknown`. Fixes `source: note-distill:unknown:unknown` on CodeBuddy.
 
 ### Changed
+
 - **Breaking**: `til` and `adr` template frontmatter aligned with Karpathy-style LLM Wiki schema. Added `type: til|adr` (so wiki tooling recognizes the page type), `updated: {{date}}` (mirrors `created` on first write; wiki lint maintains it afterward), `reviewed: false` (wiki uses this flag for unreviewed AI-generated pages). Removed `topic: til|adr` (redundant with `type`) and dropped `need-human-review` tag (the `TODO` tag plus `reviewed: false` already cover this). `title` values are now quoted for YAML safety. Existing notes without the new fields remain valid for reading; re-run `/note` to regenerate if you want them migrated.
 - **Breaking**: `adr` topic redesigned to align with [MADR 3 short](https://adr.github.io/madr/) standard. New body structure: 背景与问题陈述 / 决策驱动因素 / 备选方案 / 决策结果（含 ### 后果）/ 验证方式 / 各方案利弊. New frontmatter fields: `status` (defaults `proposed`), `deciders`, `consulted`, `informed`.
 - `adr` template now embeds per-section HTML comments specifying what to write / when to leave blank — guards AI against fabricating content for fields it can't confidently fill. All blank-fallback messages follow a unified phrasing `（X 未在对话中讨论，待补充）` so reviewers can `grep "待补充"` across the vault.
@@ -61,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `adapters/` directory; write logic unified in protocol §4. `adapter` + `link_style` config fields control target and link format.
 
 ### Added
+
 - `til` topic now supports a `follow-up` frontmatter field (array, defaults `[]`) for AI-generated knowledge-extension hooks. AI proactively judges whether a note's topic has ≥3 useful unexplored sub-points at the same abstraction level; if so, generates **at most one** specific actionable direction. Mirrored as `- [ ] follow-up: <text>` in note body for Obsidian Tasks plugin compatibility (cross-note aggregation), while frontmatter array supports Dataview queries. Existing til notes without the field remain valid.
 - Hook system: UserPromptSubmit/Stop triggers auto-collect session events, async analyze for note candidates via claude/heuristic/fake providers.
 - Candidate selection: auto (oldest/newest/priority), pick (interactive), all.
@@ -73,6 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.0.1] - 2026-05-09
 
 ### Added
+
 - 初始版本：`/note`、`/note quick|fast|q|f`、`/note deep|d`、`/note <topic>` 四种触发方式
 - 核心执行流程：主 agent spawn `subagent_type="fork"` + `run_in_background=true`，零摘要、零加工
 - 三种笔记模式：`quick`（短笔记）、`deep`（深度笔记）、`auto`（由 subagent 自行判断）

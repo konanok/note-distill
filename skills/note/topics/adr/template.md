@@ -1,8 +1,8 @@
 ---
 title: "{{title}}"
 type: adr
-created: {{datetime}}
-updated: {{datetime}}
+created: { { datetime } }
+updated: { { datetime } }
 status: proposed
 deciders: []
 consulted: []
@@ -10,7 +10,7 @@ informed: []
 ai-generated: true
 reviewed: false
 source: note-distill:{{platform}}:{{session_id}}
-tags: [adr, {{domain_tags}}, ai-generated, TODO]
+tags: [adr, { { domain_tags } }, ai-generated, TODO]
 ---
 
 # {{title}}

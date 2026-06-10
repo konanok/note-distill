@@ -121,4 +121,4 @@ SendMessage（recipient="main"）：
 - 失败：`⚠️ 笔记生成失败：<原因>`
 - 空内容：`ℹ️ 未发现值得记录的内容，未生成笔记。`
 - 重复跳过：`ℹ️ 笔记已存在且内容一致，跳过：<path>`
-- topic 自动判断：当 TOPIC=auto 且成功判定时，回报中的 topic 为实际选定的 topic 名（如 `til`、`adr`），不是 `auto`
+- topic 自动判断：当 TOPIC=auto 且成功判定时，回报中的 topic 为实际选定的 topic 名（如 `til`、`adr`、`investigation`），不是 `auto`

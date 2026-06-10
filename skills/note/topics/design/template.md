@@ -1,12 +1,12 @@
 ---
 title: "{{title}}"
 type: design
-created: {{datetime}}
-updated: {{datetime}}
+created: { { datetime } }
+updated: { { datetime } }
 ai-generated: true
 reviewed: false
 source: note-distill:{{platform}}:{{session_id}}
-tags: [design, {{domain_tags}}, ai-generated, TODO]
+tags: [design, { { domain_tags } }, ai-generated, TODO]
 ---
 
 # {{title}}

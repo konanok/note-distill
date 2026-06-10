@@ -1,6 +1,6 @@
-# CLAUDE.md
+# note-distill Agent Guide
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. `AGENTS.md` is a symlink to this file for cross-tool compatibility (Codex / CodeBuddy / Cursor read `AGENTS.md` by convention) — edit only `CLAUDE.md`.
+This file is read by Claude Code (as `CLAUDE.md`), CodeBuddy/Codex/Cursor (as `AGENTS.md` via symlink). Edit only `CLAUDE.md` — the symlink handles the rest.
 
 ## Project overview
 
@@ -12,6 +12,7 @@ note-distill is a Claude Code plugin that spawns a background subagent to distil
 - **Never hardcode `{SKILL_DIR}`** — always inject from the Skill tool's "Base directory for this skill" output. The plugin may be installed anywhere.
 - **Never hand-merge global + project config** — always invoke `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` for the single source of truth.
 - **`docs/` is gitignored** — do not add user-facing docs there expecting them to ship with the plugin.
+- **Zero runtime dependencies** — the project runs on `node --experimental-strip-types` with no npm packages. Adding any npm dependency (e.g. TOML/JSONC parser) is a breaking change requiring version bump + migration plan.
 
 ## Architecture
 
@@ -83,6 +84,7 @@ All via `node --experimental-strip-types hooks/note_distill_hook.ts <command>`:
 | `mark-consumed <note_candidates.jsonl> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
 | `parse-model-output <model-output.json> --events <events.jsonl>` | Parses LLM analyzer output into normalized candidates. |
 | `merge-config` | Outputs the merged (global + project) config as JSON. Used by the subagent to get a single source of truth. |
+| `find-session [--cwd <dir>]` | Scans session events to locate current session by matching cwd. Returns `{ session_id, platform }`. |
 
 ### Analyzer providers
 
@@ -120,8 +122,9 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Key conventions
 
 - **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, or user-defined `/note <name>`. Unspecified → `auto` (subagent reads content and picks the best-matching topic). User topics override built-in ones.
-- **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` + `need-human-review` tags (for human review), and `source: note-distill:<platform>:<session-id>` (traceability).
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, `/note design`, `/note investigation`, or user-defined `/note <name>`. Unspecified → `auto` (subagent reads content and picks the best-matching topic). User topics override built-in ones.
+- **Candidate type routing** (TOPIC=auto): `decision` → adr, `architecture` → design, `bugfix` → investigation, `gotcha/howto/command` → til, `research` → needs further judgment.
+- **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
 - **Output targets**: Controlled via config `adapter` + `link_style` fields. `local-markdown` → `output_dir`, `[text](url)` links. `obsidian` → `obsidian_vault_path`, `[[wikilink]]` links. Extend via `hooks/write-<adapter>.ts` script.
@@ -163,10 +166,11 @@ Covers: event collector redaction, fail-open on bad JSON, full wrapper→collect
 
 1. `/note git stash` → til topic (default), quick capture
 2. `/note adr NUMA 调度` → adr topic
-3. `/note` (no args) → til topic with no description
-4. `/note --pick` → shows candidate pick list if candidates exist
-5. Frontmatter includes `ai-generated: true`, `TODO` + `need-human-review` tags, `source: note-distill:<platform>:<session-id>`, `topic: <name>`
-6. Subagent reports path on completion via SendMessage
+3. `/note investigation 导出母机后库存无法归零` → investigation topic
+4. `/note` (no args) → til topic with no description
+5. `/note --pick` → shows candidate pick list if candidates exist
+6. Frontmatter includes `ai-generated: true`, `TODO` tags, `reviewed: false`, `source: note-distill:<platform>:<session-id>`, `type: <topic>`
+7. Subagent reports path on completion via SendMessage
 
 ## Release
 

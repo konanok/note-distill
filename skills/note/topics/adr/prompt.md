@@ -11,6 +11,7 @@
 ## 不该记
 
 - 碎片化知识点（用 `/note til`）
+- 问题排查过程（用 `/note investigation`）
 - 操作步骤 / 命令 / how-to 流水（暂时也走 til）
 - 未达成结论的探索性讨论
 - 闲聊、确认性对话、AI 的 yes-and 回应
