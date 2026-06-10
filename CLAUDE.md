@@ -122,8 +122,9 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Key conventions
 
 - **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). `/note til`, `/note adr`, `/note design`, `/note investigation`, or user-defined `/note <name>`. Unspecified → `auto` (subagent reads content and picks the best-matching topic). User topics override built-in ones.
-- **Candidate type routing** (TOPIC=auto): `decision` → adr, `architecture` → design, `bugfix` → investigation, `gotcha/howto/command` → til, `research` → needs further judgment.
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note design`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note arch` → design, `/note diag` → investigation). Unspecified → `auto` (subagent uses `topic-info` helper for scope-based matching).
+- **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types {SKILL_DIR}/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
+- **Topic routing** (TOPIC=auto): The subagent uses scope-based matching as the primary routing mechanism — compares conversation content against each topic's `scope` field to find the best match. Candidate type (from hook analyzer) serves as an auxiliary signal only, not the sole routing determinant. Alias resolution: project-level aliases > user-level > built-in; same-level conflicts are undefined.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types hooks/note_distill_hook.ts merge-config` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
@@ -136,6 +137,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 | File | Responsibility | Must NOT contain |
 |---|---|---|
+| `skills/note/scripts/topic-info.ts` | Topic metadata queries (alias resolution, scope listing) for subagent | Note writing, event collection |
 | `skills/note/SKILL.md` | Main agent flow + spawn prompt template | Subagent execution logic |
 | `references/note-writer-protocol.md` | Mechanical steps + bottom-line constraints (§0 boundary table) | Domain judgment rules (those live in topic prompt.md) |
 | `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |
@@ -167,10 +169,12 @@ Covers: event collector redaction, fail-open on bad JSON, full wrapper→collect
 1. `/note git stash` → til topic (default), quick capture
 2. `/note adr NUMA 调度` → adr topic
 3. `/note investigation 导出母机后库存无法归零` → investigation topic
-4. `/note` (no args) → til topic with no description
-5. `/note --pick` → shows candidate pick list if candidates exist
-6. Frontmatter includes `ai-generated: true`, `TODO` tags, `reviewed: false`, `source: note-distill:<platform>:<session-id>`, `type: <topic>`
-7. Subagent reports path on completion via SendMessage
+4. `/note arch 微服务拆分` → design topic (alias)
+5. `/note diag OOM 排查` → investigation topic (alias)
+6. `/note` (no args) → auto routing via scope-based matching
+7. `/note --pick` → shows candidate pick list if candidates exist
+8. Frontmatter includes `ai-generated: true`, `TODO` tags, `reviewed: false`, `source: note-distill:<platform>:<session-id>`, `type: <topic>`
+9. Subagent reports path on completion via SendMessage
 
 ## Release
 

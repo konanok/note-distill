@@ -43,7 +43,7 @@ tags: [adr, { { domain_tags } }, ai-generated, TODO]
 <!--
 **只列名 + 一句话定位，不写优缺点**（优缺点放最后一段"各方案利弊"）。
 bullet list，每条一行。至少 2 个 — 这是 ADR 的硬门槛，少于 2 个应当
-退回到 prompt 顶部"该记什么"重新判断是否走 til。
+退回到 prompt 顶部"记录标准"重新判断是否走 til。
 
 例：
 - 方案 A：使用 epoll 直接调度

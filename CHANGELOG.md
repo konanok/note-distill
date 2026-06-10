@@ -9,10 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `design` topic: architecture + design rationale notes, complementing TIL (atomic knowledge) and ADR (decision records with ≥2 alternatives). 6-section template: 概览 → 组件概览 → 组件详述 → 数据流 → 关键设计决策 → 已知约束与未决问题. Supports ADR cross-reference in the key design decisions section.
-- `investigation` topic: technical debugging / troubleshooting reports. Records the full flow from symptom → reproduce → root cause → fix → verify → remaining risks. 5 Whys root cause chain + multi-option fix comparison. Optional sections (not in template, inserted on demand in investigation order): 复现方法 (after symptom), 验证方案 (after fix), 遗留风险与待办 (after verify). `follow-up` frontmatter field for tracking post-investigation actions.
+- Topic frontmatter: `aliases` and `scope` fields in `prompt.md` for declarative topic metadata. Scope provides a concise natural-language routing description; aliases enable alternative topic names without renaming directories.
+- `scripts/topic-info.ts` (under skill directory) helper command: structured topic metadata queries for subagent (alias resolution + scope-based auto routing). Replaces manual directory scanning and "read first 20 lines" convention.
+- Topic aliases: `arch`/`architecture` → design, `diag` → investigation.
+- SKILL.md subagent prompt uses `topic-info` for alias resolution and scope-based routing. Candidate type (`decision`, `architecture`, etc.) retained as auxiliary routing signal, no longer the sole routing determinant.
 
 ### Changed
+
+- Topic `prompt.md` structure: "该记什么"/"不该记" sections replaced by frontmatter `scope` (routing) + body "记录标准"/"边界与排他" (writing guidance). Pure exclusion rules (e.g., "不记录闲聊") merged into body sections.
+- `argument-hint` expanded: `[til|adr|design|arch|investigation|diag]` to include aliases.
+- `design` topic: architecture + design rationale notes, complementing TIL (atomic knowledge) and ADR (decision records with ≥2 alternatives). 6-section template: 概览 → 组件概览 → 组件详述 → 数据流 → 关键设计决策 → 已知约束与未决问题. Supports ADR cross-reference in the key design decisions section.
+- `investigation` topic: technical debugging / troubleshooting reports. Records the full flow from symptom → reproduce → root cause → fix → verify → remaining risks. 5 Whys root cause chain + multi-option fix comparison. Optional sections (not in template, inserted on demand in investigation order): 复现方法 (after symptom), 验证方案 (after fix), 遗留风险与待办 (after verify). `follow-up` frontmatter field for tracking post-investigation actions.
 
 - Subagent prompt refactored: main agent no longer injects JSON blobs (NOTE_CANDIDATES, NOTE_EVENT_WINDOW, PLATFORM, SESSION_ID, EVENT_LOG_PATH, CANDIDATE_LOG_PATH). Instead, subagent discovers platform/session/paths itself and runs candidates/window commands to get data. Main agent only injects scalar parameters (TOPIC, TOPIC_HINT, SKILL_DIR, COVERAGE, SOURCE_PATH, SELECTED_CANDIDATE_IDS). This makes spawning more reliable — LLM-based main agents often failed to properly inject large JSON outputs.
 - Path selection expanded from 3-state to 4-state: COVERAGE=`full` without candidates/window now also goes fallback (subagent reads events.jsonl directly), instead of being lumped with the primary path.

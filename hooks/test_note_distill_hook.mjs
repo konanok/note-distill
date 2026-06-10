@@ -16,6 +16,7 @@ const ROOT = dirname(fileURLToPath(import.meta.url));
 const CLI = join(ROOT, "note_distill_hook.ts");
 const VALIDATE = join(ROOT, "validate-note.ts");
 const WRAPPER = join(ROOT, "run-hook.cmd");
+const TOPIC_INFO = join(ROOT, "..", "skills", "note", "scripts", "topic-info.ts");
 
 function run(command, { input, env, cwd } = {}) {
   const result = spawnSync(command[0], command.slice(1), {
@@ -36,6 +37,10 @@ function run(command, { input, env, cwd } = {}) {
 
 function nodeCli(...args) {
   return [process.execPath, "--experimental-strip-types", CLI, ...args];
+}
+
+function topicInfoCli(...args) {
+  return [process.execPath, "--experimental-strip-types", TOPIC_INFO, ...args];
 }
 
 function readJsonl(path) {
@@ -1430,6 +1435,211 @@ function testFindSessionReturnsNewestMatch() {
   assert.equal(result.session_id, "newer-session");
 }
 
+// ---- topic-info.ts tests ----
+
+function makeTopicDir(dir, name, promptContent) {
+  const topicDir = join(dir, name);
+  mkdirSync(topicDir, { recursive: true });
+  writeFileSync(join(topicDir, "prompt.md"), promptContent, "utf8");
+  writeFileSync(join(topicDir, "template.md"), "# {{title}}", "utf8");
+  return topicDir;
+}
+
+function testTopicInfoFrontmatterWithBothFields() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "test-topic",
+    '---\naliases: [tt, test]\nscope: 测试 scope 描述\n---\n\n# Test Topic\n\n记录标准：测试内容。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "test-topic", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.canonical, "test-topic");
+  assert.deepEqual(result.aliases, ["tt", "test"]);
+  assert.equal(result.scope, "测试 scope 描述");
+  assert.ok(result.prompt_path.includes("test-topic"));
+  assert.ok(result.template_path.includes("test-topic"));
+}
+
+function testTopicInfoNoAliasesOnlyScope() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "scope-only",
+    '---\nscope: 只有 scope 没有 aliases\n---\n\n# Scope Only\n\n记录标准：测试。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "scope-only", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.deepEqual(result.aliases, []);
+  assert.equal(result.scope, "只有 scope 没有 aliases");
+}
+
+function testTopicInfoNoScopeOnlyAliases() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "alias-only",
+    '---\naliases: [ao]\n---\n\n# Alias Only\n\n记录标准：测试。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "alias-only", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.deepEqual(result.aliases, ["ao"]);
+  assert.equal(result.scope, "");
+}
+
+function testTopicInfoNoFrontmatter() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "no-fm",
+    "# No Frontmatter\n\n记录标准：无 frontmatter。"
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "no-fm", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.canonical, "no-fm");
+  assert.deepEqual(result.aliases, []);
+  assert.equal(result.scope, "");
+}
+
+function testTopicInfoEmptyFrontmatter() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "empty-fm",
+    '---\n---\n\n# Empty Frontmatter\n\n记录标准：空 frontmatter。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "empty-fm", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.deepEqual(result.aliases, []);
+  assert.equal(result.scope, "");
+}
+
+function testTopicInfoAliasResolution() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "real-topic",
+    '---\naliases: [rt, real]\nscope: Real topic scope\n---\n\n# Real Topic\n\n记录标准：测试。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "rt", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.canonical, "real-topic");
+  assert.equal(result.query, "rt");
+}
+
+function testTopicInfoCanonicalNameMatch() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "canon",
+    '---\naliases: [cn]\nscope: Canon test\n---\n\n# Canon\n\n记录标准：测试。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "canon", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.canonical, "canon");
+}
+
+function testTopicInfoNotFound() {
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "exists",
+    '---\nscope: 存在的 topic\n---\n\n# Exists\n\n记录标准：测试。'
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "nonexistent", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, false);
+  assert.equal(result.query, "nonexistent");
+}
+
+function testTopicInfoListAllSorted() {
+  const dir = tempDir();
+  makeTopicDir(dir, "b-topic", '---\nscope: B\n---\n\n# B');
+  makeTopicDir(dir, "a-topic", '---\nscope: A\n---\n\n# A');
+  makeTopicDir(dir, "c-topic", '---\nscope: C\n---\n\n# C');
+  const result = JSON.parse(
+    run(topicInfoCli("--topics-dir", dir)).stdout
+  );
+  // 3 user topics + built-in topics (scanned unconditionally)
+  assert.ok(result.topics.length >= 3);
+  // All topics sorted by canonical name
+  const names = result.topics.map((t) => t.canonical);
+  const sortedNames = [...names].sort();
+  assert.deepEqual(names, sortedNames, "topics should be sorted by canonical name");
+  // Verify our 3 test topics exist
+  assert.ok(names.includes("a-topic"));
+  assert.ok(names.includes("b-topic"));
+  assert.ok(names.includes("c-topic"));
+  // Verify built-in topics are also scanned
+  for (const name of ["adr", "design", "investigation", "til"]) {
+    assert.ok(names.includes(name), `built-in topic "${name}" should be in list`);
+  }
+}
+
+function testTopicInfoTemplatePathNullWhenMissing() {
+  const dir = tempDir();
+  const topicDir = join(dir, "no-template");
+  mkdirSync(topicDir, { recursive: true });
+  writeFileSync(
+    join(topicDir, "prompt.md"),
+    '---\nscope: 没有 template.md\n---\n\n# No Template\n\n记录标准：测试。',
+    "utf8"
+  );
+  // No template.md created
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "no-template", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.template_path, null);
+}
+
+function testTopicInfoShadowing() {
+  // --topics-dir topics shadow built-in topics of the same canonical name
+  const userDir = tempDir();
+  // Create user adr with aliases [arch] — should shadow built-in adr's aliases
+  makeTopicDir(userDir, "adr", '---\naliases: [arch, override]\nscope: User-defined scope\n---\n\n# User ADR\n\n记录标准：用户定义。');
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "arch", "--topics-dir", userDir), {
+      cwd: userDir,
+    }).stdout
+  );
+  assert.equal(result.found, true);
+  assert.equal(result.canonical, "adr");
+  assert.deepEqual(result.aliases, ["arch", "override"]);
+  assert.equal(result.scope, "User-defined scope");
+}
+
+function testTopicInfoScopePreservesRoutingHints() {
+  // scope retains →adr / →investigation routing hints as-is
+  const dir = tempDir();
+  makeTopicDir(
+    dir,
+    "design",
+    "---\naliases: [arch]\nscope: 记录架构设计。不记录碎片知识点（→til）、问题排查（→investigation）。\n---\n\n# Design\n\n边界与排他：\n- 不记录闲聊"
+  );
+  const result = JSON.parse(
+    run(topicInfoCli("--name", "design", "--topics-dir", dir)).stdout
+  );
+  assert.equal(result.found, true);
+  assert.ok(result.scope.includes("→til"));
+  assert.ok(result.scope.includes("→investigation"));
+}
+
 function testParseModelOutputRepairsTruncatedJson() {
   const dir = tempDir();
   const eventsPath = join(dir, "events.jsonl");
@@ -1767,6 +1977,18 @@ const tests = [
   testFindSessionDetectsCodeBuddyOldFormat,
   testFindSessionReturnsNullWhenNoMatch,
   testFindSessionReturnsNewestMatch,
+  testTopicInfoFrontmatterWithBothFields,
+  testTopicInfoNoAliasesOnlyScope,
+  testTopicInfoNoScopeOnlyAliases,
+  testTopicInfoNoFrontmatter,
+  testTopicInfoEmptyFrontmatter,
+  testTopicInfoAliasResolution,
+  testTopicInfoCanonicalNameMatch,
+  testTopicInfoNotFound,
+  testTopicInfoListAllSorted,
+  testTopicInfoTemplatePathNullWhenMissing,
+  testTopicInfoShadowing,
+  testTopicInfoScopePreservesRoutingHints,
   testConfigExampleMatchesHookDefaults,
 ];
 
