@@ -1,7 +1,7 @@
 ---
 name: note
-description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、arch(design)、investigation(diag)，支持用户自定义 topic 和别名。
-argument-hint: [til|adr|arch|design|investigation|diag] [可选描述]
+description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、arch(design)、investigation(diag)、runbook(playbook)，支持用户自定义 topic 和别名。
+argument-hint: [til|adr|arch|design|investigation|diag|runbook|playbook|troubleshooting] [可选描述]
 ---
 
 用户执行了 `/note $ARGUMENTS`。SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
