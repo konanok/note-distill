@@ -5,6 +5,7 @@ import {
   loadJsonl,
   writeJsonl,
   parseOptions,
+  sessionPath,
 } from "../../../lib/nd-common.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -28,11 +29,21 @@ function markConsumed(
 }
 
 const args = process.argv.slice(2);
-const parsed = parseOptions(args, ["ids", "note-path"]);
-const candidatePath = parsed.positionals[0];
+const parsed = parseOptions(args, ["ids", "note-path", "session-id"]);
+let candidatePath: string;
+
+if (parsed.options["session-id"]) {
+  candidatePath = sessionPath(
+    parsed.options["session-id"],
+    "note_candidates.jsonl"
+  );
+} else {
+  candidatePath = parsed.positionals[0];
+}
+
 if (!candidatePath || !parsed.options.ids || !parsed.options["note-path"]) {
   process.stderr.write(
-    "usage: mark-consumed.ts <note_candidates.jsonl> --ids <ids> --note-path <path>\n"
+    "usage: mark-consumed.ts <note_candidates.jsonl> --ids <ids> --note-path <path> | mark-consumed.ts --session-id <id> --ids <ids> --note-path <path>\n"
   );
   process.exitCode = 2;
 } else {

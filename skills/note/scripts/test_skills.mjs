@@ -548,6 +548,59 @@ function testMergeConfigIncludesEnabledField() {
   assert.equal(merged.candidate_analyzer.enabled, false);
 }
 
+function testMergeConfigResolvesSubagentModel() {
+  const dir = tempDir();
+  const globalConfigPath = join(dir, "global-config.json");
+  writeFileSync(
+    globalConfigPath,
+    JSON.stringify({
+      adapter: "local-markdown",
+      output_dir: "/tmp",
+      subagent: { model: "haiku" },
+      model_map: {
+        codebuddy: { haiku: "deepseek-v4-flash", sonnet: "deepseek-v4-pro" },
+      },
+    })
+  );
+  // claude-code — no mapping
+  const claude = JSON.parse(
+    run(skillCli("merge-config.ts", "--platform", "claude-code"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(claude.subagent_resolved_model, "haiku");
+  // codebuddy — mapped
+  const cb = JSON.parse(
+    run(skillCli("merge-config.ts", "--platform", "codebuddy"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(cb.subagent_resolved_model, "deepseek-v4-flash");
+  // no platform — no resolved field
+  const noPlatform = JSON.parse(
+    run(skillCli("merge-config.ts"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(noPlatform.subagent_resolved_model, undefined);
+  // model not in map — passthrough (use "opus" to avoid deep-merge with example config)
+  writeFileSync(
+    globalConfigPath,
+    JSON.stringify({
+      adapter: "local-markdown",
+      output_dir: "/tmp",
+      subagent: { model: "opus" },
+      model_map: { codebuddy: { haiku: "deepseek-v4-flash" } },
+    })
+  );
+  const unmapped = JSON.parse(
+    run(skillCli("merge-config.ts", "--platform", "codebuddy"), {
+      env: { NOTE_DISTILL_CONFIG: globalConfigPath },
+    }).stdout
+  );
+  assert.equal(unmapped.subagent_resolved_model, "opus");
+}
+
 function testCandidateExtractionFiltersByTopic() {
   const dir = tempDir();
   const candidatesPath = join(dir, "note_candidates.jsonl");
@@ -751,6 +804,80 @@ function testMarkCandidatesConsumed() {
   assert.equal(records[0].note_path, "/tmp/note.md");
   assert.ok(records[0].consumed_at);
   assert.equal(records[1].status, "pending");
+}
+
+function testWindowWithSessionId() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "session-1");
+  mkdirSync(sessionDir, { recursive: true });
+  writeJsonl(join(sessionDir, "events.jsonl"), [
+    {
+      event: "UserPromptSubmit",
+      payload: { prompt: "帮我写个 git stash 命令" },
+    },
+  ]);
+  const result = JSON.parse(
+    run(skillCli("window.ts", "--session-id", "session-1"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.coverage, "full");
+  assert.equal(result.events.length, 1);
+}
+
+function testCandidatesWithSessionId() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "session-2");
+  mkdirSync(sessionDir, { recursive: true });
+  writeJsonl(join(sessionDir, "events.jsonl"), [
+    {
+      event: "UserPromptSubmit",
+      payload: { prompt: "怎么用 git rebase" },
+    },
+  ]);
+  writeJsonl(join(sessionDir, "note_candidates.jsonl"), [
+    {
+      candidate_id: "c1",
+      status: "pending",
+      title: "git rebase",
+      type: "command",
+      range: { prompt_event_index: 0 },
+    },
+  ]);
+  const result = JSON.parse(
+    run(skillCli("candidates.ts", "--session-id", "session-2"), {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }).stdout
+  );
+  assert.equal(result.coverage, "full");
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0].title, "git rebase");
+}
+
+function testMarkConsumedWithSessionId() {
+  const dir = tempDir();
+  const sessionDir = join(dir, "sessions", "session-3");
+  mkdirSync(sessionDir, { recursive: true });
+  const candidatesPath = join(sessionDir, "note_candidates.jsonl");
+  writeJsonl(candidatesPath, [
+    { candidate_id: "x", status: "pending", title: "X" },
+  ]);
+  run(
+    skillCli(
+      "mark-consumed.ts",
+      "--session-id",
+      "session-3",
+      "--ids",
+      "x",
+      "--note-path",
+      "/tmp/note.md"
+    ),
+    {
+      env: { NOTE_DISTILL_DATA_DIR: dir },
+    }
+  );
+  const records = readJsonl(candidatesPath);
+  assert.equal(records[0].status, "consumed");
 }
 
 function makeSimpleNote(frontmatter, body) {
@@ -1437,11 +1564,15 @@ const tests = [
   testProjectConfigDeepMergesNestedObjects,
   testMergeConfigCommand,
   testMergeConfigIncludesEnabledField,
+  testMergeConfigResolvesSubagentModel,
   testCandidateExtractionFiltersByTopic,
   testCandidateExtractionReportsTopicMiss,
   testCandidateExtractionFiltersToCurrentNoteWindow,
   testCandidateSelectionModes,
   testMarkCandidatesConsumed,
+  testWindowWithSessionId,
+  testCandidatesWithSessionId,
+  testMarkConsumedWithSessionId,
   testValidatePassesWithAllSections,
   testValidateFailsOnMissingSection,
   testValidateOptionalSectionCanBeMissing,

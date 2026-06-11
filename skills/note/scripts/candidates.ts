@@ -6,6 +6,7 @@ import {
   parseOptions,
   detectCoverage,
   currentNoteWindow,
+  sessionPath,
 } from "../../../lib/nd-common.ts";
 
 type JsonObject = Record<string, unknown>;
@@ -143,17 +144,31 @@ const parsed = parseOptions(args, [
   "selection",
   "strategy",
   "max-options",
+  "session-id",
 ]);
-const candidatePath = parsed.positionals[0];
+
+// Resolve paths: --session-id takes priority; fall back to positional + --events
+let candidatePath: string;
+let eventsPath: string | undefined;
+
+if (parsed.options["session-id"]) {
+  candidatePath = sessionPath(
+    parsed.options["session-id"],
+    "note_candidates.jsonl"
+  );
+  eventsPath = sessionPath(parsed.options["session-id"], "events.jsonl");
+} else {
+  candidatePath = parsed.positionals[0];
+  eventsPath = parsed.options.events || undefined;
+}
+
 if (!candidatePath) {
   process.stderr.write(
-    "usage: candidates.ts <note_candidates.jsonl> [--events <events.jsonl>] [--topic <topic>] [--selection auto|pick|all] [--strategy oldest|newest|priority] [--max-options <n>]\n"
+    "usage: candidates.ts <note_candidates.jsonl> [--events <events.jsonl>] | candidates.ts --session-id <id> [--topic <topic>] [--selection auto|pick|all] [--strategy oldest|newest|priority] [--max-options <n>]\n"
   );
   process.exitCode = 2;
 } else {
-  const events = parsed.options.events
-    ? loadJsonl(resolve(parsed.options.events))
-    : [];
+  const events = eventsPath ? loadJsonl(resolve(eventsPath)) : [];
   const coverage = detectCoverage(events);
   const [previousNote, currentNote] = currentNoteWindow(events);
   const filtered = pendingCandidates(
@@ -171,7 +186,7 @@ if (!candidatePath) {
   const selected = selectCandidates(filtered, selection, strategy, maxOptions);
   const result = {
     candidate_log_path: candidatePath,
-    event_log_path: parsed.options.events || null,
+    event_log_path: eventsPath || null,
     coverage,
     previous_note_index: previousNote,
     current_note_index: currentNote,

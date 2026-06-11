@@ -27,5 +27,18 @@
     "provider": "auto",
     "model": "haiku",
     "fallback": "heuristic"
+  },
+
+  "subagent": {
+    "model": "haiku",
+    "_model_comment": "note-writer subagent 使用的模型。取值为 Claude 模型别名，会通过下方 model_map 按平台映射为实际模型名"
+  },
+
+  "model_map": {
+    "codebuddy": {
+      "haiku": "deepseek-v4-flash",
+      "sonnet": "deepseek-v4-pro"
+    },
+    "_comment": "按平台映射模型名。claude-code 原生支持 haiku/sonnet，无需映射；codebuddy 等平台需映射为本地模型别名"
   }
 }

@@ -18,11 +18,14 @@ import { fileURLToPath } from "node:url";
 
 import {
   DATA_HOME,
+  PLATFORM_CLAUDE,
+  PLATFORM_CODEBUDDY,
   utcNow,
   loadJsonl,
   writeJsonl,
   analyzerConfig,
   detectPlatform,
+  resolveModel,
   payload,
   promptFor,
   assistantFor,
@@ -467,33 +470,6 @@ function parseModelCandidates(
   };
 }
 
-/**
- * Map a semantic model name to the CLI-specific value.
- * - Claude Code CLI accepts aliases: haiku, sonnet, opus
- * - CodeBuddy CLI requires full names: claude-haiku-4.5, deepseek-v4-flash-ioa, etc.
- *
- * "haiku" = fastest/cheapest option per provider:
- *   - claude CLI  → haiku (Claude Haiku)
- *   - codebuddy   → deepseek-v4-flash-ioa (fast + free on CodeBuddy platform)
- */
-const CLI_MODEL_MAP: Record<string, Record<string, string>> = {
-  claude: {
-    haiku: "haiku",
-    sonnet: "sonnet",
-    opus: "opus",
-  },
-  codebuddy: {
-    haiku: "deepseek-v4-flash-ioa",
-    sonnet: "claude-sonnet-4.7",
-    opus: "claude-opus-4.7",
-  },
-};
-
-function resolveModel(provider: string, model: string): string {
-  const mapped = CLI_MODEL_MAP[provider]?.[model];
-  return mapped || model;
-}
-
 function findExecutable(envVar: string, binaryName: string): string | null {
   const configured = process.env[envVar];
   if (configured && existsSync(configured)) return configured;
@@ -526,7 +502,13 @@ function buildCliCandidates(
 ): JsonObject[] {
   const args = ["--print"];
   if (provider === "claude") args.push("--bare");
-  const modelArg = resolveModel(provider, String(config.model || "haiku"));
+  const platform =
+    provider === "claude"
+      ? PLATFORM_CLAUDE
+      : provider === "codebuddy"
+      ? PLATFORM_CODEBUDDY
+      : PLATFORM_CLAUDE;
+  const modelArg = resolveModel(String(config.model || "haiku"), platform);
   args.push("--model", modelArg);
   const result = spawnSync(executable, args, {
     input: buildAnalyzerPrompt(events),
@@ -642,7 +624,7 @@ function buildAutoCandidates(
     build: (exe: string) => JsonObject[];
   };
   const probes: CliProbe[] =
-    platform === "codebuddy"
+    platform === PLATFORM_CODEBUDDY
       ? [
           {
             name: "codebuddy",

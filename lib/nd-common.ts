@@ -21,9 +21,18 @@ export function expandHome(path: string): string {
 
 // ---- constants ----
 
+export const PLATFORM_CLAUDE = "claude-code";
+export const PLATFORM_CODEBUDDY = "codebuddy";
+
 export const DATA_HOME = expandHome(
   process.env.NOTE_DISTILL_DATA_DIR || "~/.local/share/note-distill"
 );
+
+// ---- session paths ----
+
+export function sessionPath(sessionId: string, filename: string): string {
+  return join(DATA_HOME, "sessions", sessionId, filename);
+}
 export const CONFIG_PATH = expandHome(
   process.env.NOTE_DISTILL_CONFIG || "~/.config/note-distill/config.json"
 );
@@ -173,16 +182,31 @@ export function analyzerConfig(): JsonObject {
   };
 }
 
+// ---- model ----
+
+export function resolveModel(
+  model: string,
+  platform: string,
+  config?: JsonObject
+): string {
+  if (platform === PLATFORM_CLAUDE) return model;
+  const cfg = config || loadConfig();
+  const modelMap =
+    (cfg.model_map as Record<string, Record<string, string>>) || {};
+  const platformMap = modelMap[platform];
+  return platformMap?.[model] || model;
+}
+
 // ---- platform ----
 
 export function detectPlatform(transcriptPath: string): string {
   if (!transcriptPath) return "unknown";
-  if (transcriptPath.includes(".claude/")) return "claude-code";
+  if (transcriptPath.includes(".claude/")) return PLATFORM_CLAUDE;
   if (
     transcriptPath.includes("CodeBuddyExtension") ||
     transcriptPath.includes(".codebuddy/")
   )
-    return "codebuddy";
+    return PLATFORM_CODEBUDDY;
   return "unknown";
 }
 

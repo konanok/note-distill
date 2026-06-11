@@ -8,7 +8,7 @@ note-distill is a Claude Code plugin that spawns a background subagent to distil
 
 ## Hard boundaries (read first)
 
-- **Main agent never summarizes or distills** — it only parses args, reads config, runs candidate/window helpers, and spawns the subagent. All writing work happens in the subagent.
+- **Main agent never makes subagent decisions** — main agent only parses `/note` args and handles `--pick` interaction (AskUserQuestion). COVERAGE, SOURCE_PATH, topic resolution, content selection — all subagent decisions.
 - **Never hardcode `{SKILL_DIR}`** — always inject from the Skill tool's "Base directory for this skill" output. The plugin may be installed anywhere.
 - **Never hand-merge global + project config** — always invoke `node --experimental-strip-types skills/note/scripts/merge-config.ts` for the single source of truth.
 - **`docs/` is gitignored** — do not add user-facing docs there expecting them to ship with the plugin.
@@ -27,11 +27,8 @@ note-distill is a Claude Code plugin that spawns a background subagent to distil
                     └──────────────┬──────────────────────┘
                                    │ candidates + event window
                                    ▼
-/note-distill:note → skills/note/SKILL.md (argument parsing, topic resolution, config check, candidate/window extraction)
-      ├── Primary path (COVERAGE=full AND candidates/window available):
-      │   general-purpose subagent (background) — runs candidates/window commands itself
-      └── Fallback path (COVERAGE=full but no candidates/window, OR partial/empty):
-          general-purpose subagent (background) — reads events.jsonl directly for conversation context
+/note-distill:note → skills/note/SKILL.md (parse /note args → --pick interaction if needed → spawn)
+      └── note-writer subagent (background) — self-locates SKILL_DIR, determines COVERAGE/SOURCE_PATH, resolves topic, writes note autonomously
 
 Subagent flow (both paths):
   1. note-writer-protocol.md → mechanical workflow + bottom-line constraints
@@ -47,14 +44,9 @@ Plugin manifest: `.claude-plugin/plugin.json`
 
 **No-summarization rule**: see "Hard boundaries" above.
 
-**Primary vs fallback**: The hook system (`hooks/`) records session events and produces note candidates via an analyzer. The `window` command on `note_distill_hook.ts` reports a `coverage` field on every call:
-- `full` — first UserPromptSubmit in `events.jsonl` is a normal user message (hook was online when the session started).
-  - If candidates/window available → **primary** path.
-  - If no candidates and no window content → **fallback** path (subagent reads events.jsonl directly).
-- `partial` — first UserPromptSubmit is already `/note` (hook only started recording at or after the `/note` invocation; everything earlier is missing). Main agent sets `SOURCE_PATH=fallback` in the spawn prompt to prevent the subagent from mistaking the captured fragment for the full picture, and goes **fallback**.
-- `empty` — no events at all. Goes **fallback**.
+**Subagent autonomy**: The note-writer subagent (`agents/note-writer.md`) is the single source of truth for all execution logic. It self-locates SKILL_DIR, determines COVERAGE by running `window.ts`, decides SOURCE_PATH, resolves topics via `topic-info.ts`, selects content, and writes notes. The main agent only passes four parameters: TOPIC (from `/note` arg parsing), TOPIC_HINT (remaining text), SELECTED_CANDIDATE_IDS (from `--pick` interaction), and SKILL_DIR (convenience injection; subagent can also self-locate).
 
-Fallback path: subagent reads events.jsonl directly (user prompts + assistant responses) as conversation context. No platform-specific env vars required.
+Fallback: when no hook data is available (COVERAGE=empty), subagent reads events.jsonl directly.
 
 ## Hook-based candidate pipeline
 
@@ -86,10 +78,10 @@ Skill runtime commands (migrated to `skills/note/scripts/`):
 |---|---|
 | `merge-config.ts` | Outputs the merged (global + project) config as JSON. |
 | `find-session.ts --cwd <dir>` | Scans session events to locate current session by matching cwd. |
-| `window.ts <events.jsonl>` | Extracts the event range between the last two `/note` commands. |
-| `candidates.ts <note_candidates.jsonl> [...]` | Filters pending candidates by window + topic, selects per strategy. |
+| `window.ts <events.jsonl> \| --session-id <id>` | Extracts the event range between the last two `/note` commands. |
+| `candidates.ts <note_candidates.jsonl> [...] \| --session-id <id> [...]` | Filters pending candidates by window + topic, selects per strategy. |
 | `context.ts <candidate.json>` | Reads `source_refs` from a candidate and returns the referenced event range. |
-| `mark-consumed.ts <note_candidates.jsonl> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
+| `mark-consumed.ts <note_candidates.jsonl> --ids <csv> --note-path <path> \| --session-id <id> --ids <csv> --note-path <path>` | Marks candidates as consumed after a successful note write. |
 | `validate-note.ts <note.md> --template <tpl>` | Validates note structure, frontmatter, and template variables. |
 | `topic-info.ts [--name <name>] [--topics-dir <path>]` | Topic metadata queries (alias resolution, scope listing). |
 
@@ -131,10 +123,10 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 ## Key conventions
 
-- **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note arch`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note design` → arch, `/note diag` → investigation). Unspecified → `auto` (subagent uses `topic-info` helper for scope-based matching).
-- **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types {SKILL_DIR}/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
-- **Topic routing** (TOPIC=auto): The subagent uses scope-based matching as the primary routing mechanism — compares conversation content against each topic's `scope` field to find the best match. Candidate type (from hook analyzer) serves as an auxiliary signal only, not the sole routing determinant. Alias resolution: project-level aliases > user-level > built-in; same-level conflicts are undefined.
+- **`{SKILL_DIR}` / `$SKILL_DIR`**: `{SKILL_DIR}` appears in SKILL.md (main agent context) — replaced by the Skill tool's "Base directory for this skill" output. `$SKILL_DIR` appears in `agents/note-writer.md` (subagent context) — a variable the subagent self-locates by searching for `skills/note/scripts/merge-config.ts` from the working directory. Both values point to the same `skills/note` directory. Never hardcode skill paths — the plugin may be installed anywhere.
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note arch`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note design` → arch, `/note diag` → investigation). Unspecified → `auto`. Topic resolution is done by the subagent via `topic-info.ts` — including alias resolution and scope-based matching for `auto`. If the user specifies a topic name that doesn't exist, subagent falls back to `auto` rather than failing.
+- **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types $SKILL_DIR/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
+- **Topic routing**: Subagent resolves topic via `topic-info.ts`. Explicit topic name → direct lookup (not-found → auto fallback). `auto` → scope-based matching against all available topics. Candidate type serves as auxiliary signal only.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types skills/note/scripts/merge-config.ts` — never manually merge the two files. Example template: `skills/note/config.example.json`.
 - **Hook data** at `~/.local/share/note-distill/` (override with `NOTE_DISTILL_DATA_DIR` env var). Per-session: `sessions/<session_id>/events.jsonl` + `note_candidates.jsonl`.
@@ -147,9 +139,10 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 | File | Responsibility | Must NOT contain |
 |---|---|---|
-| `skills/note/scripts/topic-info.ts` | Topic metadata queries (alias resolution, scope listing) for subagent | Note writing, event collection |
-| `skills/note/SKILL.md` | Main agent flow + spawn prompt template | Subagent execution logic |
-| `references/note-writer-protocol.md` | Mechanical steps + bottom-line constraints (§0 boundary table) | Domain judgment rules (those live in topic prompt.md) |
+| `agents/note-writer.md` | Subagent 完整系统 prompt（身份 + SKILL_DIR 自定位 + COVERAGE/SOURCE_PATH 自主决策 + 11 步流程 + 约束）。主 agent 仅注入 TOPIC/TOPIC_HINT/SELECTED_CANDIDATE_IDS/SKILL_DIR。 | 无（单源指令） |
+| `skills/note/scripts/topic-info.ts` | Topic metadata queries (alias resolution, scope listing) for subagent and main agent | Note writing, event collection |
+| `skills/note/SKILL.md` | 主 agent 流程（解析 /note 参数 → --pick 交互 → spawn） | Subagent 决策逻辑 |
+| `references/note-writer-protocol.md` | Adapter 写入协议（输出路径、链接风格、扩展脚本调度、写入后确认） | 工作流步骤、领域判断、验证策略（这些在 agents/note-writer.md 中） |
 | `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |
 | `topics/<name>/template.md` | Complete note skeleton (frontmatter + sections + {{variable}} placeholders) | Writing philosophy (now in prompt.md) |
 | `hooks/hooks.json` | Hook trigger registration (UserPromptSubmit, Stop) | Subagent logic |
@@ -170,7 +163,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 
 **Extension point — custom write scripts**: To add adapter-specific write logic (e.g. obsidian-cli), the plugin ships `hooks/write-<adapter>.ts`. The subagent prefers this over direct `Write`; failure falls back to `mkdir + Write`. Users do not customize this — it's a plugin developer extension point.
 
-**Protocol vs prompt boundary**: When `note-writer-protocol.md` and a topic's `prompt.md` conflict, protocol wins on workflow, validation, verification strategy, and reporting. prompt.md wins on domain judgment, writing style, and format constraints.
+**Protocol vs prompt boundary**: `agents/note-writer.md` is the single source of truth for the subagent's workflow (steps, validation, reporting, constraints). `note-writer-protocol.md` handles only the write adapter layer (how to write based on adapter type). When the two conflict, agents/note-writer.md wins on workflow; protocol wins on adapter-specific write logic.
 
 ## Testing
 
@@ -187,7 +180,7 @@ Covers: event collector redaction, fail-open on bad JSON, full wrapper→collect
 1. `/note git stash` → til topic (default), quick capture
 2. `/note adr NUMA 调度` → adr topic
 3. `/note investigation 导出母机后库存无法归零` → investigation topic
-4. `/note arch 微服务拆分` → arch topic (canonical)
+4. `/note arch 微服务拆分` → design topic (alias)
 5. `/note diag OOM 排查` → investigation topic (alias)
 6. `/note` (no args) → auto routing via scope-based matching
 7. `/note --pick` → shows candidate pick list if candidates exist
