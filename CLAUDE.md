@@ -132,7 +132,7 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Key conventions
 
 - **`{SKILL_DIR}`**: Path placeholder in SKILL.md for internal references. Derived from the Skill tool's "Base directory for this skill" output when the skill is loaded — NOT from filesystem computation. Injected by main agent into the subagent spawn prompt. Never hardcode skill paths — the plugin may be installed elsewhere.
-- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note design`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note arch` → design, `/note diag` → investigation). Unspecified → `auto` (subagent uses `topic-info` helper for scope-based matching).
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note arch`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note design` → arch, `/note diag` → investigation). Unspecified → `auto` (subagent uses `topic-info` helper for scope-based matching).
 - **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types {SKILL_DIR}/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
 - **Topic routing** (TOPIC=auto): The subagent uses scope-based matching as the primary routing mechanism — compares conversation content against each topic's `scope` field to find the best match. Candidate type (from hook analyzer) serves as an auxiliary signal only, not the sole routing determinant. Alias resolution: project-level aliases > user-level > built-in; same-level conflicts are undefined.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
@@ -187,7 +187,7 @@ Covers: event collector redaction, fail-open on bad JSON, full wrapper→collect
 1. `/note git stash` → til topic (default), quick capture
 2. `/note adr NUMA 调度` → adr topic
 3. `/note investigation 导出母机后库存无法归零` → investigation topic
-4. `/note arch 微服务拆分` → design topic (alias)
+4. `/note arch 微服务拆分` → arch topic (canonical)
 5. `/note diag OOM 排查` → investigation topic (alias)
 6. `/note` (no args) → auto routing via scope-based matching
 7. `/note --pick` → shows candidate pick list if candidates exist

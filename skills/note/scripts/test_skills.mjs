@@ -1310,7 +1310,7 @@ function testTopicInfoListAllSorted() {
   assert.ok(names.includes("b-topic"));
   assert.ok(names.includes("c-topic"));
   // Verify built-in topics are also scanned
-  for (const name of ["adr", "design", "investigation", "til"]) {
+  for (const name of ["adr", "arch", "investigation", "til"]) {
     assert.ok(
       names.includes(name),
       `built-in topic "${name}" should be in list`
@@ -1338,20 +1338,21 @@ function testTopicInfoTemplatePathNullWhenMissing() {
 function testTopicInfoShadowing() {
   // --topics-dir topics shadow built-in topics of the same canonical name
   const userDir = tempDir();
-  // Create user adr with aliases [arch] — should shadow built-in adr's aliases
+  // Create user adr with aliases [design, override] — should shadow built-in arch's alias "design"
+  // (design is used as shadow alias because arch is now a canonical name, not an alias)
   makeTopicDir(
     userDir,
     "adr",
-    "---\naliases: [arch, override]\nscope: User-defined scope\n---\n\n# User ADR\n\n记录标准：用户定义。"
+    "---\naliases: [design, override]\nscope: User-defined scope\n---\n\n# User ADR\n\n记录标准：用户定义。"
   );
   const result = JSON.parse(
-    run(topicInfoCli("--name", "arch", "--topics-dir", userDir), {
+    run(topicInfoCli("--name", "design", "--topics-dir", userDir), {
       cwd: userDir,
     }).stdout
   );
   assert.equal(result.found, true);
   assert.equal(result.canonical, "adr");
-  assert.deepEqual(result.aliases, ["arch", "override"]);
+  assert.deepEqual(result.aliases, ["design", "override"]);
   assert.equal(result.scope, "User-defined scope");
 }
 
@@ -1360,11 +1361,11 @@ function testTopicInfoScopePreservesRoutingHints() {
   const dir = tempDir();
   makeTopicDir(
     dir,
-    "design",
-    "---\naliases: [arch]\nscope: 记录架构设计。不记录碎片知识点（→til）、问题排查（→investigation）。\n---\n\n# Design\n\n边界与排他：\n- 不记录闲聊"
+    "arch",
+    "---\naliases: [design]\nscope: 记录架构设计。不记录碎片知识点（→til）、问题排查（→investigation）。\n---\n\n# Arch\n\n边界与排他：\n- 不记录闲聊"
   );
   const result = JSON.parse(
-    run(topicInfoCli("--name", "design", "--topics-dir", dir)).stdout
+    run(topicInfoCli("--name", "arch", "--topics-dir", dir)).stdout
   );
   assert.equal(result.found, true);
   assert.ok(result.scope.includes("→til"));

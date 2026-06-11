@@ -9,9 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `runbook` topic (aliases: `playbook`, `troubleshooting`): 排查操作手册，记录因操作不当、数据缺失或参数遗漏导致的问题（系统行为符合程序预期，非代码缺陷）。与 `investigation` 的核心判断线——系统行为是否符合程序预期？符合预期（操作问题）→ runbook；不符合预期（代码缺陷）→ investigation。必填段：适用症状、问题链路、排查步骤、代码线索。排查步骤要求完整可执行语句 + 判断分支 + 必要时 ASCII/mermaid 决策图。
+- `arch` topic diagram guidance: 组件详述段支持 ASCII 时序图 / mermaid sequenceDiagram；数据流段支持 mermaid flowchart（简单用 ASCII，复杂用 mermaid）。
+
+### Changed
+
+- **Breaking**: `design` topic renamed to `arch`. Canonical name `design` → `arch`; `design` becomes an alias. Template `type: design` → `type: arch`; tags `[design, ...]` → `[arch, ...]`. Existing notes with `type: design` still valid but canonical name has changed. Project-level overrides at `./.note-distill/topics/design/` need manual rename to `./.note-distill/topics/arch/`.
+
 - Topic frontmatter: `aliases` and `scope` fields in `prompt.md` for declarative topic metadata. Scope provides a concise natural-language routing description; aliases enable alternative topic names without renaming directories.
 - `scripts/topic-info.ts` (under skill directory) helper command: structured topic metadata queries for subagent (alias resolution + scope-based auto routing). Replaces manual directory scanning and "read first 20 lines" convention.
-- Topic aliases: `arch`/`architecture` → design, `diag` → investigation.
+- Topic aliases: `arch`/`architecture` → design, `diag` → investigation. (renamed in Unreleased — now `arch` is canonical and `design` is alias)
 - SKILL.md subagent prompt uses `topic-info` for alias resolution and scope-based routing. Candidate type (`decision`, `architecture`, etc.) retained as auxiliary routing signal, no longer the sole routing determinant.
 
 ### Changed

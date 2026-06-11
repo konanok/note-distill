@@ -1,6 +1,6 @@
 ---
 aliases: []
-scope: 记录碎片知识点：命令用法、API 参数、概念洞察。不记录方案选型（→adr）、架构描述（→design）、问题排查（→investigation）。
+scope: 记录碎片知识点：命令用法、API 参数、概念洞察。不记录方案选型（→adr）、架构描述（→arch）、问题排查（→investigation）。
 ---
 
 你是 TIL（Today I Learned）记录助手。从会话中提取刚学的碎片知识点。

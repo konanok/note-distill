@@ -1,7 +1,7 @@
 ---
 name: note
-description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、design(arch)、investigation(diag)，支持用户自定义 topic 和别名。
-argument-hint: [til|adr|design|arch|investigation|diag] [可选描述]
+description: 后台 subagent 将会话内容按 topic 整理为结构化笔记，写入知识库。未指定 topic 时由 subagent 自动判断；出厂 til、adr、arch(design)、investigation(diag)，支持用户自定义 topic 和别名。
+argument-hint: [til|adr|arch|design|investigation|diag] [可选描述]
 ---
 
 用户执行了 `/note $ARGUMENTS`。
@@ -121,7 +121,7 @@ SKILL_DIR = Skill 工具返回的 "Base directory for this skill"。
      found=true → 使用返回的 canonical topic，读 prompt_path 和 template_path（template_path 为 null 时回报"topic 缺少 template.md"并结束）
      found=false → 回报"未找到 topic: {TOPIC}"并结束
    - TOPIC=`auto` → 运行 `node --experimental-strip-types {SKILL_DIR}/scripts/topic-info.ts --topics-dir <topics_dir>`（无 --name）：
-     若有候选词且候选词含 `type` 字段，用作辅助信号（不排除其他 topic，仅优先检查对应 scope 匹配度）：decision → 优先检查 adr scope；architecture → 优先检查 design scope；bugfix → 优先检查 investigation scope；gotcha/howto/command → 优先检查 til scope
+     若有候选词且候选词含 `type` 字段，用作辅助信号（不排除其他 topic，仅优先检查对应 scope 匹配度）：decision → 优先检查 adr scope；architecture → 优先检查 arch scope；bugfix → 优先检查 investigation scope；gotcha/howto/command → 优先检查 til scope
      a. 从返回的 topics 列表中，用每个 topic 的 scope 判断匹配度
      b. 若某 topic scope 为空，回退读该 topic 的 prompt.md 前 20 行
      c. 选择匹配度最高的 topic（唯一匹配 → 直接用；多个匹配 → 选条件满足最充分的；均不匹配 → 回报"未发现值得记录的内容，未生成笔记。"并结束）

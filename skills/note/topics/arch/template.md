@@ -1,12 +1,12 @@
 ---
 title: "{{title}}"
-type: design
+type: arch
 created: { { datetime } }
 updated: { { datetime } }
 ai-generated: true
 reviewed: false
 source: note-distill:{{platform}}:{{session_id}}
-tags: [design, { { domain_tags } }, ai-generated, TODO]
+tags: [arch, { { domain_tags } }, ai-generated, TODO]
 ---
 
 # {{title}}
@@ -49,6 +49,7 @@ tags: [design, { { domain_tags } }, ai-generated, TODO]
 关键实现细节：...
 与其他组件的交互：...
 
+多组件交互难以文字描述时，加 ASCII 时序图或 mermaid sequenceDiagram 辅助说明。
 如对话对某组件讨论很少，写"（组件 X 详述未在对话中讨论，待补充）"，不要从训练知识里编。
 -->
 
@@ -57,9 +58,9 @@ tags: [design, { { domain_tags } }, ai-generated, TODO]
 {{data_flow}}
 
 <!--
-优先用 ASCII 流程图展示端到端流转，辅以文字说明。
+优先用 ASCII 流程图或 mermaid flowchart 展示端到端流转，辅以文字说明。
 
-例：
+ASCII 例：
 ```text
 UserPromptSubmit / Stop
        │
@@ -75,6 +76,7 @@ UserPromptSubmit / Stop
          commandCandidates() → 筛选结果
 ```
 
+简单流转用 ASCII，复杂多分支/多组件流转用 mermaid。
 如对话未提供足够信息画出完整流程，画出已知部分，缺失节点标注"（待补充）"。
 -->
 
