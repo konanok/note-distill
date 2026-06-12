@@ -103,7 +103,6 @@ fallback path 中 subagent 直接读取 events.jsonl（用户 prompt + 助手回
 │   │   ├── references/       # Subagent 行为规范
 │   │   └── topics/           # 出厂 topic（til、adr、arch、investigation、runbook）
 │   ├── note-config/          # /note-config
-│   ├── note-check/           # /note-check
 │   └── add-topic/            # /add-topic（创建自定义 topic）
 ├── hooks/                    # Hook 系统（事件采集 + 候选分析）
 └── CLAUDE.md

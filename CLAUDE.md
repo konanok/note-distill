@@ -37,7 +37,6 @@ Subagent flow (both paths):
   4. fills template variables → validate-note.ts → writes note (mkdir + Write, or hooks/write-<adapter>.ts) → marks candidates consumed → reports path via SendMessage
 
 /note-config → skills/note-config/SKILL.md (creates ~/.config/note-distill/)
-/note-check → skills/note-check/SKILL.md (validates configuration)
 ```
 
 Plugin manifest: `.claude-plugin/plugin.json`
@@ -159,7 +158,6 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 | `hooks/test_hooks.mjs` | Hook pipeline integration tests | — |
 | `skills/note/scripts/test_skills.mjs` | Skill command integration tests | — |
 | `skills/note-config/SKILL.md` | Initialize user config and topics | Note writing |
-| `skills/note-check/SKILL.md` | Validate user configuration | Note writing |
 
 **Extension point — custom write scripts**: To add adapter-specific write logic (e.g. obsidian-cli), the plugin ships `hooks/write-<adapter>.ts`. The subagent prefers this over direct `Write`; failure falls back to `mkdir + Write`. Users do not customize this — it's a plugin developer extension point.
 

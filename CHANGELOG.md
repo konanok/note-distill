@@ -62,6 +62,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `buildCliCandidates()` logs stderr when CLI execution fails (status ≠ 0) for easier debugging.
 - Tests: `testParseModelOutputRepairsTruncatedJson`, `testParseModelOutputNoRepairOnValidJson`, `testParseModelOutputStripsMarkdownCodeBlock` covering the new pure functions.
 
+### Removed
+
+- `/note-check` skill: removed dead code. `note-config` correctly configures everything; missing config fields fall back to factory defaults in all note scripts. The skill's only marginal value was pre-validating write permissions, but the first `/note` failure serves the same diagnostic purpose.
+
 ### Changed
 
 - `{{date}}` 模板变量重命名为 `{{datetime}}`，frontmatter 中 `created`/`updated` 格式从 `YYYY-MM-DD` 改为 `YYYY-MM-DD HH:MM:SS`。移除 `date +%Y-%m-%d` 等平台特定命令硬编码，改为平台无关获取方式。输出文件名中的 `{date}` 仍为 `YYYY-MM-DD`。
