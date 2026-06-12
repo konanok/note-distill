@@ -37,15 +37,14 @@ Subagent flow (both paths):
   4. fills template variables → validate-note.ts → writes note (mkdir + Write, or hooks/write-<adapter>.ts) → marks candidates consumed → reports path via SendMessage
 
 /note-config → skills/note-config/SKILL.md (creates ~/.config/note-distill/)
+/add-topic  → skills/add-topic/SKILL.md (creates custom topics via topic-creation-guide.md)
 ```
 
 Plugin manifest: `.claude-plugin/plugin.json`
 
-**No-summarization rule**: see "Hard boundaries" above.
+**Subagent autonomy**: The note-writer subagent (`agents/note-writer.md`) self-locates SKILL_DIR, determines COVERAGE/SOURCE_PATH, resolves topics, selects content, and writes notes. Main agent only passes: TOPIC, TOPIC_HINT, SELECTED_CANDIDATE_IDS, SKILL_DIR. Fallback (COVERAGE=empty): subagent reads events.jsonl directly.
 
-**Subagent autonomy**: The note-writer subagent (`agents/note-writer.md`) is the single source of truth for all execution logic. It self-locates SKILL_DIR, determines COVERAGE by running `window.ts`, decides SOURCE_PATH, resolves topics via `topic-info.ts`, selects content, and writes notes. The main agent only passes four parameters: TOPIC (from `/note` arg parsing), TOPIC_HINT (remaining text), SELECTED_CANDIDATE_IDS (from `--pick` interaction), and SKILL_DIR (convenience injection; subagent can also self-locate).
-
-Fallback: when no hook data is available (COVERAGE=empty), subagent reads events.jsonl directly.
+**Anti-recursion guard**: The `NOTE_DISTILL_ANALYZER_CHILD=1` env var is set when spawning the analyzer subprocess. If a Stop hook fires inside that subprocess, the collector checks the var and skips collection, preventing infinite hook→analyze→hook loops.
 
 ## Hook-based candidate pipeline
 
@@ -113,8 +112,8 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Development workflow
 
 - **No build step** — all files are Markdown or JSON interpreted at runtime. Edit and save; changes take effect immediately (except SKILL.md frontmatter name/description changes, which need `/reload-plugins`).
-- **Test without installing:** `claude --plugin-dir ~/Projects/Github/note-distill`
-- **Install as plugin (dev):** `/plugin install ~/Projects/Github/note-distill`
+- **Test without installing:** `claude --plugin-dir <path-to-note-distill>`
+- **Install as plugin (dev):** `/plugin install <path-to-note-distill>`
 - **Run hook tests:** `node --experimental-strip-types hooks/test_hooks.mjs` (covers event collection, redaction, analyzer locking, model output parsing)
 - **Run skill tests:** `node --experimental-strip-types skills/note/scripts/test_skills.mjs` (covers config merge, find-session, window, candidates, context, mark-consumed, validate-note, topic-info)
 - **Run a single test:** pipe subset of test data through the CLI — e.g. `echo '{"event":"..."}' | node --experimental-strip-types hooks/note_distill_hook.ts collect`
@@ -123,8 +122,8 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 ## Key conventions
 
 - **`{SKILL_DIR}` / `$SKILL_DIR`**: `{SKILL_DIR}` appears in SKILL.md (main agent context) — replaced by the Skill tool's "Base directory for this skill" output. `$SKILL_DIR` appears in `agents/note-writer.md` (subagent context) — a variable the subagent self-locates by searching for `skills/note/scripts/merge-config.ts` from the working directory. Both values point to the same `skills/note` directory. Never hardcode skill paths — the plugin may be installed anywhere.
-- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). `/note til`, `/note adr`, `/note arch`, `/note investigation`, or user-defined `/note <name>`. Aliases supported via frontmatter (e.g. `/note design` → arch, `/note diag` → investigation). Unspecified → `auto`. Topic resolution is done by the subagent via `topic-info.ts` — including alias resolution and scope-based matching for `auto`. If the user specifies a topic name that doesn't exist, subagent falls back to `auto` rather than failing.
-- **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases: [alias1, alias2]` (inline array) and `scope: <single-line natural language>` (describes what this topic records and where its boundaries are). `template.md` and generated notes do NOT use this frontmatter. The subagent queries topic metadata via `node --experimental-strip-types $SKILL_DIR/scripts/topic-info.ts [--name <name>] [--topics-dir <path>]`.
+- **Topic system**: 3-level lookup: project `./.note-distill/topics/<name>/` → user `<topics_dir>/<name>/` → built-in `skills/note/topics/<name>/`. Each topic contains `prompt.md` (domain judgment + writing standards) and `template.md` (output skeleton). User topics override built-in ones (higher-priority directory shadows lower). Built-in topics: `til`, `adr`, `arch`, `investigation`, `runbook`. Aliases supported via frontmatter (e.g. `/note design` → arch, `/note diag` → investigation, `/note playbook` → runbook). Unspecified → `auto`. Topic resolution is done by the subagent via `topic-info.ts` — including alias resolution and scope-based matching for `auto`. If the user specifies a topic name that doesn't exist, subagent falls back to `auto` rather than failing.
+- **Topic frontmatter**: `prompt.md` may include YAML frontmatter with `aliases` (inline array) and `scope` (single-line natural language). `template.md` and generated notes do NOT use this frontmatter. Subagent queries topic metadata via `topic-info.ts`.
 - **Topic routing**: Subagent resolves topic via `topic-info.ts`. Explicit topic name → direct lookup (not-found → auto fallback). `auto` → scope-based matching against all available topics. Candidate type serves as auxiliary signal only.
 - **Frontmatter conventions**: All generated notes include `ai-generated: true`, `TODO` tags, `reviewed: false`, and `source: note-distill:<platform>:<session-id>` (traceability).
 - **User config** at `~/.config/note-distill/config.json` (global) with optional `./.note-distill.json` project-level override. Project config only needs to specify fields to override; nested objects are deep-merged. The subagent gets a single source of truth via `node --experimental-strip-types skills/note/scripts/merge-config.ts` — never manually merge the two files. Example template: `skills/note/config.example.json`.
@@ -132,31 +131,23 @@ A file-based lock prevents race conditions when multiple Stop hooks fire in quic
 - **Output targets**: Controlled via config `adapter` + `link_style` fields. `local-markdown` → `output_dir`, `[text](url)` links. `obsidian` → `obsidian_vault_path`, `[[wikilink]]` links. Extend via `hooks/write-<adapter>.ts` script.
 - **All `.md` files use LF line endings**. Hook `.ts`/`.mjs` files use LF.
 - **Config fields**: when adding a new config field, update both `config.example.json` and (if present locally) `docs/DESIGN.md` §4.1. Both global config and hook `loadConfig()` must support the new field.
-- **`docs/` is gitignored**: design docs and ADRs are local-only, not part of the distributed plugin.
+- **Config comments**: `config.example.json` uses `_`-prefixed keys (e.g. `_comment`, `_default`) as inline documentation. `loadConfig()` in `nd-common.ts` calls `stripCommentKeys()` to remove them before returning config to consumers.
+- **Atomic JSONL writes**: `writeJsonl()` in `nd-common.ts` writes to a `.tmp` file then renames, preventing partial writes from corrupting session data.
 
 ## File responsibility (single-responsibility)
 
 | File | Responsibility | Must NOT contain |
 |---|---|---|
-| `agents/note-writer.md` | Subagent 完整系统 prompt（身份 + SKILL_DIR 自定位 + COVERAGE/SOURCE_PATH 自主决策 + 11 步流程 + 约束）。主 agent 仅注入 TOPIC/TOPIC_HINT/SELECTED_CANDIDATE_IDS/SKILL_DIR。 | 无（单源指令） |
-| `skills/note/scripts/topic-info.ts` | Topic metadata queries (alias resolution, scope listing) for subagent and main agent | Note writing, event collection |
-| `skills/note/SKILL.md` | 主 agent 流程（解析 /note 参数 → --pick 交互 → spawn） | Subagent 决策逻辑 |
-| `references/note-writer-protocol.md` | Adapter 写入协议（输出路径、链接风格、扩展脚本调度、写入后确认） | 工作流步骤、领域判断、验证策略（这些在 agents/note-writer.md 中） |
+| `agents/note-writer.md` | Subagent system prompt (single source of truth for execution logic) | — |
+| `skills/note/SKILL.md` | Main agent flow: parse `/note` args → `--pick` interaction → spawn | Subagent decision logic |
+| `skills/note/references/note-writer-protocol.md` | Adapter write protocol (output paths, link styles, write-adapter dispatch) | Workflow steps, domain judgment (those live in `agents/note-writer.md`) |
+| `skills/add-topic/SKILL.md` | Custom topic creation guide + validation | Note writing |
 | `topics/<name>/prompt.md` | Domain judgment criteria + writing standards | Mechanical workflow rules |
-| `topics/<name>/template.md` | Complete note skeleton (frontmatter + sections + {{variable}} placeholders) | Writing philosophy (now in prompt.md) |
+| `topics/<name>/template.md` | Note skeleton (frontmatter + sections + `{{variable}}` placeholders) | Writing philosophy (in `prompt.md`) |
+| `hooks/note_distill_hook.ts` | Event collection + candidate analysis (analyze/parse-model-output) | Note writing |
+| `lib/nd-common.ts` | Shared: config loading, jsonl I/O, CLI parsing, platform detection | — |
 | `hooks/hooks.json` | Hook trigger registration (UserPromptSubmit, Stop) | Subagent logic |
-| `hooks/note_distill_hook.ts` | Event collection, candidate analysis (analyze/parse-model-output) | Note writing |
-| `lib/nd-common.ts` | Shared functions: config loading, jsonl I/O, event helpers, CLI parsing, platform detection | — |
-| `skills/note/scripts/merge-config.ts` | Merged config output | — |
-| `skills/note/scripts/find-session.ts` | Session discovery by cwd | — |
-| `skills/note/scripts/window.ts` | Event window extraction | — |
-| `skills/note/scripts/candidates.ts` | Candidate selection and filtering | — |
-| `skills/note/scripts/context.ts` | Read event range from candidate source_refs | — |
-| `skills/note/scripts/mark-consumed.ts` | Mark candidates as consumed | — |
-| `skills/note/scripts/validate-note.ts` | Section structure, frontmatter, variable validation | Note generation |
-| `hooks/run-hook.cmd` | Cross-platform hook wrapper | — |
-| `hooks/test_hooks.mjs` | Hook pipeline integration tests | — |
-| `skills/note/scripts/test_skills.mjs` | Skill command integration tests | — |
+| `skills/note/scripts/*.ts` | One script per responsibility — see Commands table above | — |
 | `skills/note-config/SKILL.md` | Initialize user config and topics | Note writing |
 
 **Extension point — custom write scripts**: To add adapter-specific write logic (e.g. obsidian-cli), the plugin ships `hooks/write-<adapter>.ts`. The subagent prefers this over direct `Write`; failure falls back to `mkdir + Write`. Users do not customize this — it's a plugin developer extension point.

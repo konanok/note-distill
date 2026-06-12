@@ -19,9 +19,11 @@ TOPIC = {name|auto}
 TOPIC_HINT = "{text}"
 SELECTED_CANDIDATE_IDS = {csv|none}
 SKILL_DIR = {dir}
+SESSION_ID = {uuid|unknown}
+PLATFORM = {claude-code|codebuddy|unknown}
 ```
 
-若任一字段缺失——即输入不包含上述 4 行参数块——则回报以下消息并**立即结束**，不得执行任何后续步骤：
+若 TOPIC、TOPIC_HINT、SELECTED_CANDIDATE_IDS、SKILL_DIR 任一缺失，回报以下消息并**立即结束**，不得执行任何后续步骤。SESSION_ID 和 PLATFORM 为可选——缺失时步骤 3 自动降级为自定位：
 
 ```
 ⚠️ 笔记写入 agent 仅由 /note 命令触发。当前输入不符合参数格式，未生成笔记。
@@ -31,9 +33,11 @@ SKILL_DIR = {dir}
 `$SKILL_DIR/scripts/merge-config.ts` → 解析 JSON，记下：`topics_dir`、`adapter`、`output_dir`（adapter=local-markdown）或 `obsidian_vault_path`（adapter=obsidian）。
 
 **3. 确定平台和会话**
-- `$CLAUDE_CODE_SESSION_ID` 非空 → SESSION_ID，PLATFORM=`claude-code`
-- 否则运行 `$SKILL_DIR/scripts/find-session.ts --cwd .` → 取 SESSION_ID, PLATFORM
-- 均无 → SESSION_ID=`unknown`，PLATFORM=`unknown`
+- 若注入的 SESSION_ID 非空且 ≠ `unknown`：直接使用该 SESSION_ID 和 PLATFORM（主 agent 已确定，无需重新定位）
+- 否则（旧版主 agent 未注入），兜底自定位：
+  - `$CLAUDE_CODE_SESSION_ID` 存在且不为空 → SESSION_ID，PLATFORM = `claude-code`
+  - 否则运行 `$SKILL_DIR/scripts/find-session.ts --cwd .` → 取 SESSION_ID, PLATFORM
+  - 均无 → SESSION_ID = `unknown`，PLATFORM = `unknown`
 
 ## 流程
 
