@@ -47,7 +47,7 @@ scope: 记录碎片知识点：命令用法、API 参数、概念洞察。不记
 1. frontmatter `follow-up:` 数组添加该条目
 2. 在 `## 延伸` 段下追加一行：`- [ ] follow-up: <同一句话>`（与模板末尾的 HTML 注释指引一致）
 
-这样 Obsidian Tasks 插件能识别行内 task 做跨笔记聚合，Dataview 能查 frontmatter — 工具友好 + 阅读友好双兼容。
+**frontmatter 格式**：空 `follow-up: []`，单条 inline `follow-up: [item]`，多条必须 multiline。
 
 如果不生成 follow-up：frontmatter 保持 `follow-up: []`，正文末**不要**追加 task 行。
 
